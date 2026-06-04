@@ -1,0 +1,98 @@
+{
+  "name": "electron-pos",
+  "version": "1.0.0",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "electron-dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "vite build",
+    "start": "electron .",
+    "package": "electron-builder --dir",
+    "dist": "electron-builder --win --x64 --publish never"
+  },
+  "build": {
+    "asar": false,
+    "appId": "com.example.restro",
+    "productName": "Restro",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "backend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend"
+      },
+      {
+        "from": "database.sqlite",
+        "to": "database.sqlite"
+      },
+      {
+        "from": "data.sql",
+        "to": "data.sql"
+      }
+    ],
+    "asarUnpack": [
+      "**/backend/**",
+      "**/*.sqlite",
+      "**/*.sql"
+    ],
+    "directories": {
+      "output": "out",
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico",
+      "sign": false
+    }
+  },
+  "keywords": [],
+  "author": "Sun Shine IT Solutions",
+  "license": "ISC",
+  "description": "POS System for Restaurants",
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
+    "electron": "^39.2.3",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.2.2",
+    "wait-on": "^8.0.3"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.0",
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
+    "formik": "^2.4.6",
+    "framer-motion": "^12.26.2",
+    "hamburger-react": "^2.5.2",
+    "jspdf": "^3.0.1",
+    "jspdf-autotable": "^5.0.2",
+    "jwt-decode": "^4.0.0",
+    "node-printer": "^1.0.4",
+    "papaparse": "^5.5.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^7.4.0",
+    "react-select": "^5.10.1",
+    "react-to-print": "^3.0.5",
+    "react-toastify": "^10.0.5",
+    "xlsx": "^0.18.5",
+    "yup": "^1.7.1"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "license": "license.txt",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  }
+}

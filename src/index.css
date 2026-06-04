@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide the default checkbox */
+.custom-checkbox {
+    @apply appearance-none  size-7 border border-gray-300 rounded-md ;
+    background-color: white; /* Default background */
+    cursor: pointer;
+  }
+  
+  /* Style the checkbox when checked */
+  .custom-checkbox:checked {
+    @apply border-transparent;
+    background-color: #4CBBA1; /* Custom background color */
+  }
+  
+  /* Style the check mark */
+  .custom-checkbox:checked::before {
+    content: '\2713'; /* Unicode character for check mark */
+    color: white; /* Check mark color */
+    @apply flex items-center justify-center ml-1; /* Center the check mark */
+    display: inline-block ;
+    width: 100%;
+    height: 100%;
+  }
+  
+  /* Change label text color when checked */
+  .custom-checkbox:checked + .custom-label {
+    @apply text-[#1C1D3E];
+  }
+
+  .custom-checkbox2 {
+    @apply appearance-none  size-7 border border-gray-300 rounded-md;
+    background-color: white; /* Default background */
+    cursor: pointer;
+  }
+  
+  /* Style the checkbox when checked */
+  .custom-checkbox2:checked {
+    @apply border-transparent;
+    background-color: #1C1D3E; /* Custom background color */
+  }
+  
+  /* Style the check mark */
+  .custom-checkbox2:checked::before {
+    content: '\002713'; /* Unicode character for check mark */
+    color: white; /* Check mark color */
+    @apply flex items-center justify-center ml-1; /* Center the check mark */
+    display: inline-block ;
+    width: 100%;
+    height: 100%;
+  }
+  
+  /* Change label text color when checked */
+  .custom-checkbox2:checked + .custom-label {
+    @apply text-[#4CBBA1];
+  }
+
+
+  /* Add this to your global CSS file */
+.hide-scrollbar {
+  overflow-y: scroll; /* Enable vertical scrolling */
+}
+
+/* Hide scrollbar for WebKit browsers (Chrome, Safari) */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Hide scrollbar */
+}
+
+/* Hide scrollbar for Firefox */
+.hide-scrollbar {
+  scrollbar-width: none; /* Hide scrollbar */
+}

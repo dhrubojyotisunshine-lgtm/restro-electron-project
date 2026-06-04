@@ -1,0 +1,9 @@
+====== KITCHEN ORDER ======
+
+Kitchen: 4
+Order: 12
+---------------------------
+1 x samosa
+
+
+
