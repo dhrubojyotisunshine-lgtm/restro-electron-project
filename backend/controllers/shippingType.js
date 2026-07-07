@@ -267,7 +267,7 @@ const getShippingMethodById = async (req, res) => {
     const { id } = req.params;
     const query = "SELECT * FROM shipping_method WHERE ship_id = ?";
 
-    db.all(query, [id], (err, result) => {
+    db.get(query, [id], (err, result) => {
       if (err) {
         console.error("Database query error: ", err);
         return res

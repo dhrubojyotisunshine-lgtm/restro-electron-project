@@ -173,7 +173,7 @@ const getKitchenById = async (req, res) => {
         i.kitchenid = ?
     `;
 
-  db.all(getKitchenByIdQuery, [kitchenid], (err, data) => {
+  db.get(getKitchenByIdQuery, [kitchenid], (err, data) => {
     if (err) {
       console.error("Database error:", err);
       return res.status(500).json({ success: false, message: "Server error" });

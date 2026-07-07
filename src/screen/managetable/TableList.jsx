@@ -266,7 +266,7 @@ const submitTableData = (e) => {
     setEditId3(id);
     setIsModalOpen3(true);
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/floors/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/floors/${id}`, { headers: { Authorization: token } }).then((response) => {
       setFormData3({
         floorName: response.data.data.floorName,
         created_by:response.data.data.created_by
