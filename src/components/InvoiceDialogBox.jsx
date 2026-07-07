@@ -6,10 +6,11 @@ const DialogBox = ({ isOpen, onClose, invoiceDatas}) => {
   const APP_URL = import.meta.env.VITE_APP_URL;
   const VITE_IMG_URL= import.meta.env.VITE_IMG_URL;
   const [data, setData] = useState(null);
+  const token = localStorage.getItem("token");
 
   const fetchImageData = () => {
     axios
-      .get(`${API_BASE_URL}/websetting`)
+      .get(`${API_BASE_URL}/websetting`, { headers: { Authorization: token } })
       .then((response) => {
         setData(response.data.data);
         console.log("data shiw to imag",data)
@@ -67,10 +68,10 @@ const DialogBox = ({ isOpen, onClose, invoiceDatas}) => {
               <p className="text-sm text-gray-700">
                 Customer Type: {
                   orderDetails[0]?.cutomertype === 99 ? "QR Customer" :
-                  orderDetails[0]?.cutomertype === 4 ? "Take Way" :
+                  orderDetails[0]?.cutomertype === 4 ? "Take Away" :
                   orderDetails[0]?.cutomertype === 3 ? "Third Party" :
                   orderDetails[0]?.cutomertype === 2 ? "Online Customer" :
-                  orderDetails[0]?.cutomertype === 1 ? "Walk In Customer" :
+                  orderDetails[0]?.cutomertype === 1 ? "Dine In" :
                   "Unknown"
                 }
               </p>

@@ -1162,8 +1162,13 @@ const updateItemFood = (req, res) => {
         special !== undefined ? specialint : existingItem.special;
       const updatedIsOffer =
         isoffer !== undefined ? isofferint : existingItem.offerIsavailable;
-      const updatedOfferStartDate =
-        offerstartdate ?? existingItem.offerstartdate;
+      // const updatedOfferStartDate =
+      //   offerstartdate ?? existingItem.offerstartdate;
+        const updatedOfferStartDate =
+  offerstartdate !== undefined
+    ? (offerstartdate || null)
+    : (existingItem.offerstartdate || null);
+
       const updatedOfferEndDate = offerenddate ?? existingItem.offerendate;
       const updatedIsCustomQuantity =
         is_custom_quantity !== undefined

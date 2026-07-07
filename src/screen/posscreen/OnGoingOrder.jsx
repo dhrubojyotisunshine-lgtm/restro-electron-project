@@ -182,7 +182,14 @@ const OnGoingOrder = () => {
         },
       })
       .then((response) => {
-        setPaymentMethod(response.data);
+        const sorted = [...response.data].sort((a, b) =>
+          a.payment_method === "Cash Payment"
+            ? -1
+            : b.payment_method === "Cash Payment"
+            ? 1
+            : 0
+        );
+        setPaymentMethod(sorted);
       })
       .catch((error) => {
         console.error(error);
@@ -215,7 +222,7 @@ const OnGoingOrder = () => {
 
   const showBillDetails = async (order_id) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/invoice/${order_id}`);
+      const response = await axios.get(`${API_BASE_URL}/invoice/${order_id}`, { headers: { Authorization: token } });
       setBillData([response.data]); // Set the data first
       console.log("Bill me daal na h ye data ", response.data);
       // Delay the print action until after the state has been updated
@@ -381,7 +388,7 @@ const OnGoingOrder = () => {
   };
   const showInvoiceData = async (order_id) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/invoice/${order_id}`);
+      const response = await axios.get(`${API_BASE_URL}/invoice/${order_id}`, { headers: { Authorization: token } });
       setInvoiceData([response.data]);
       console.log("Invoice Data: ", invoiceData);
       setInvoiceDataModal(true);
@@ -420,7 +427,8 @@ const OnGoingOrder = () => {
             }, 0)
           : 0; // Default to 0 if no add-ons
 
-      return acc + qty * price + vat + addonsPrice; // Accumulate the total
+      const vatAmount = (qty * price * vat) / 100;
+      return acc + qty * price + vatAmount + addonsPrice; // Accumulate the total
     }, 0)
     .toFixed(2); // Format the total to 2 decimal places
   // for remaining total
@@ -441,7 +449,8 @@ const OnGoingOrder = () => {
             }, 0)
           : 0; // Default to 0 if no add-ons
 
-      return acc + qty * price + vat + addonsPrice; // Accumulate the total
+      const vatAmount = (qty * price * vat) / 100;
+      return acc + qty * price + vatAmount + addonsPrice; // Accumulate the total
     }, 0)
     .toFixed(2); // Format the total to 2 decimal places
 

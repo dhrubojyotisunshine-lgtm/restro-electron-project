@@ -359,7 +359,7 @@ const getalldetailsProductiondetails = async (req, res) => {
 
         productionDetails.forEach((detail) => {
           const ingredientPurchaseDetail = purchaseDetails.find(
-            (purchase) => purchase.indredientid === detail.ingredientid,
+            (purchase) => String(purchase.indredientid) === String(detail.ingredientid),
           );
 
           const pricePerUnit =
@@ -1238,7 +1238,7 @@ const findbyIdProductiondetails = async (req, res) => {
         (item) => item.ingredientid === detail.indredientid,
       );
       const ingredientName = ingredientNameFetchQuery.find(
-        (item) => item.id === detail.indredientid,
+        (item) => String(item.id) === String(detail.indredientid),
       );
       const ingredientNameValue = ingredientName
         ? ingredientName.ingredient_name
@@ -1339,7 +1339,7 @@ const viewProductiondetails = async (req, res) => {
         (item) => item.ingredientid === detail.indredientid,
       );
       const ingredientName = ingredientNameFetchQuery.find(
-        (item) => item.id === detail.indredientid,
+        (item) => String(item.id) === String(detail.indredientid),
       );
       const ingredientNameValue = ingredientName
         ? ingredientName.ingredient_name

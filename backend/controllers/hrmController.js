@@ -576,7 +576,6 @@ const createEmployeeHistory = async (req, res) => {
     rate,
     pay_frequency,
     pay_frequency_txt,
-    password,
     country,
     state,
     city,
@@ -587,73 +586,62 @@ const createEmployeeHistory = async (req, res) => {
   try {
     // Check if email exists in user or employee_history
     const checkEmailSql = `
-      SELECT email FROM user WHERE email = ? 
-      UNION 
+      SELECT email FROM user WHERE email = ?
+      UNION
       SELECT email FROM employee_history WHERE email = ?`;
     const emailExists = await dbQuery(checkEmailSql, [email, email]);
 
     if (emailExists.length > 0) {
-      return res
-        .status(400)
-        .send({ message: "Email already exists. Try a different one." });
+      return res.status(400).send({ message: "Email already exists. Try a different one." });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Resolve created_by via subscription check
+    let created_by = null;
+    const subResult = await dbQuery("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [req.id]);
+    if (subResult.length > 0) {
+      created_by = req.id;
+    } else {
+      const creatorResult = await dbQuery("SELECT created_by FROM user WHERE id = ?", [req.id]);
+      if (!creatorResult.length || !creatorResult[0].created_by) {
+        return res.status(403).json({ message: "You are not authorized to create an employee." });
+      }
+      created_by = creatorResult[0].created_by;
+    }
 
-    // ✅ SQLite-style insert into user table
+    // Auto-assign default password for the employee user account
+    const hashedPassword = await bcrypt.hash("Welcome@1234", 10);
+
+    // Insert into user table
     const userSql = `
-      INSERT INTO user (firstname, lastname, email, password, image)
-      VALUES (?, ?, ?, ?, ?)`;
-    const userresult = await dbQuery(userSql, [
-      first_name,
-      last_name,
-      email,
-      hashedPassword,
-      picture,
+      INSERT INTO user (firstname, lastname, about, email, password, image, last_login, last_logout, status, is_admin, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const userresult = await runDb(userSql, [
+      first_name, last_name, "", email, hashedPassword, picture,
+      null, null, 1, 0, created_by,
     ]);
 
-    const user_id = userresult.lastID; // In SQLite, use lastID instead of insertId
+    const user_id = userresult.lastID;
 
-    // ✅ SQLite-style insert into employee_history
+    // Insert into employee_history
     const insertSql = `
       INSERT INTO employee_history (
         employee_id, pos_id, first_name, last_name, email, phone, country, state, city, zip, division_id, duty_type, voluntary_termination, dob, gender,
         marital_status, home_email, home_phone, emerg_contct, emrg_w_phone, termination_reason, hire_date, original_hire_date, termination_date,
-        rehire_date, rate_type, rate, pay_frequency, pay_frequency_txt, picture, user_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        rehire_date, rate_type, rate, pay_frequency, pay_frequency_txt, picture, user_id,
+        citizenship, hourly_rate2, hourly_rate3, home_department, department_text, super_visor_id, supervisor_report,
+        ethnic_group, eeo_class_gp, work_in_state, live_in_state, business_email, business_phone, cell_phone,
+        emrg_h_phone, emgr_contct_relation, alt_em_contct, alt_emg_h_phone, alt_emg_w_phone, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    const result = await dbQuery(insertSql, [
-      employee_id,
-      pos_id,
-      first_name,
-      last_name,
-      email,
-      phone,
-      country,
-      state,
-      city,
-      zip,
-      division_id,
-      duty_type,
-      voluntary_termination,
-      dob,
-      gender,
-      marital_status,
-      home_email,
-      home_phone,
-      emerg_contct,
-      emrg_w_phone,
-      termination_reason,
-      hire_date,
-      original_hire_date,
-      termination_date,
-      rehire_date,
-      rate_type,
-      rate,
-      pay_frequency,
-      pay_frequency_txt,
-      picture,
-      user_id,
+    const result = await runDb(insertSql, [
+      employee_id, pos_id, first_name, last_name, email, phone, country, state, city,
+      zip, division_id, duty_type, voluntary_termination, dob, gender, marital_status,
+      home_email, home_phone, emerg_contct, emrg_w_phone, termination_reason, hire_date,
+      original_hire_date, termination_date, rehire_date, rate_type, rate, pay_frequency,
+      pay_frequency_txt, picture, user_id,
+      0, 0, 0, "", "", "", "",
+      "", "", 0, 0, "", "", "",
+      "", "", "", "", "", created_by,
     ]);
 
     return res.status(200).send({
@@ -664,7 +652,7 @@ const createEmployeeHistory = async (req, res) => {
     });
   } catch (err) {
     console.error("Error processing request:", err);
-    return res.status(500).send("Server error");
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 

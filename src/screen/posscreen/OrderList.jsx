@@ -287,7 +287,19 @@ const OrderList = ({ setIsCashRegisterOpen }) => {
       customer_type: selectCustomerType,
       waiter_id: selectCustomerType === 4 ? null : waiter || null, // Skip waiter for type 4
       table_id: selectTable || null,
-      order_details: orderDetail,
+      persons: Number(persons),
+      order_details: cart.map((item) => ({
+        ProductsID: item.ProductsID,
+        product_id: item.ProductsID,
+        price: item.price,
+        quantity: item.quantity,
+        variantid: item.variantid || 0,
+        addons: (item.checkedaddons || []).map((addon) => ({
+          add_on_id: addon.add_on_id,
+          add_on_name: addon.add_on_name,
+          add_on_quantity: addon.add_on_quantity,
+        })),
+      })),
       grand_total: total,
       service_charge: serviceChargeAmount,
       discount: 0,
@@ -372,7 +384,18 @@ const OrderList = ({ setIsCashRegisterOpen }) => {
       waiter_id: selectCustomerType === 4 ? null : waiter || null, // Skip waiter for type 4
       table_id: selectTable || null,
       persons: Number(persons),
-      order_details: orderDetail,
+      order_details: cart.map((item) => ({
+        ProductsID: item.ProductsID,
+        product_id: item.ProductsID,
+        price: item.price,
+        quantity: item.quantity,
+        variantid: item.variantid || 0,
+        addons: (item.checkedaddons || []).map((addon) => ({
+          add_on_id: addon.add_on_id,
+          add_on_name: addon.add_on_name,
+          add_on_quantity: addon.add_on_quantity,
+        })),
+      })),
       grand_total: total,
       service_charge: serviceChargeAmount,
       discount: 0,
@@ -808,7 +831,7 @@ const OrderList = ({ setIsCashRegisterOpen }) => {
   const submitAddcustomer = (e) => {
     e.preventDefault();
     axios
-      .post(`${API_BASE_URL}/customer`, formData)
+      .post(`${API_BASE_URL}/customer`, formData, { headers: { Authorization: token } })
       .then((res) => {
         console.log(res.data);
         setCmodal(false);

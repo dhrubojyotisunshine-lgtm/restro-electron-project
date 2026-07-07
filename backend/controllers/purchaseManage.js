@@ -83,15 +83,18 @@ const getPurchaseItemDetails = (req, res) => {
         });
       }
 
-      const { is_admin, created_by } = userData;
-      const creatorId = is_admin === 1 ? userId : created_by;
+      const { created_by } = userData;
 
-      if (!creatorId) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized to view purchase items",
-        });
-      }
+      const checkSubscriptionQuery = `SELECT 1 FROM superadmin_user_plans WHERE user_id = ? LIMIT 1`;
+
+      db.get(checkSubscriptionQuery, [userId], (err, ownSub) => {
+        if (err) {
+          return res.status(500).json({ success: false, message: "Database error", error: err.message });
+        }
+
+        // Use same owner-resolution logic as createPurchaseItem:
+        // if user has own subscription -> their own purchases; else -> creator's purchases
+        const creatorId = ownSub ? userId : (created_by || userId);
 
       let getPurchaseItemDetailsQuery = `
         SELECT
@@ -144,6 +147,7 @@ const getPurchaseItemDetails = (req, res) => {
               : "No purchase items found",
         });
       });
+      }); // close db.get checkSubscriptionQuery
     });
   } catch (error) {
     console.error("Backend Error:", error);
@@ -2212,7 +2216,7 @@ const updatePurchaseItem = (req, res) => {
         purchaseexpiredate !== undefined
           ? purchaseexpiredate
           : currentData.purchaseexpiredate,
-      savedby: savedby !== undefined ? savedby : currentData.savedby,
+      savedby: currentData.savedby,
       bankid:
         finalBankIdToUse !== undefined ? finalBankIdToUse : currentData.bankid,
       suplierID: suplierID !== undefined ? suplierID : currentData.suplierID,
@@ -3630,6 +3634,56 @@ const getReturnItemInfoByID = (req, res) => {
   });
 };
 
+const getPurchaseHistory = (req, res) => {
+  const { purchaseid } = req.params;
+  const userId = req.id;
+
+  const userQuery = "SELECT is_admin, created_by FROM user WHERE id = ?";
+  db.get(userQuery, [userId], (err, userData) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!userData) return res.status(404).json({ success: false, message: "User not found" });
+
+    const checkSubscriptionQuery = "SELECT 1 FROM superadmin_user_plans WHERE user_id = ? LIMIT 1";
+    db.get(checkSubscriptionQuery, [userId], (err, ownSub) => {
+      if (err) return res.status(500).json({ success: false, message: "Server error" });
+      const creatorId = ownSub ? userId : (userData.created_by || userId);
+
+      db.get(
+        "SELECT invoiceid, total_price, paid_amount FROM purchaseitem WHERE purID = ? AND savedby = ?",
+        [purchaseid, creatorId],
+        (err, purchase) => {
+          if (err) return res.status(500).json({ success: false, message: "Server error" });
+          if (!purchase) return res.status(404).json({ success: false, message: "Purchase not found" });
+
+          const { invoiceid, total_price, paid_amount } = purchase;
+
+          const getHistoryQuery = `
+            SELECT sl.amount, sl.description, sl.d_c, sl.date,
+              COALESCE(pm.payment_method, 'Cash') AS payment_mode
+            FROM supplier_ledger sl
+            LEFT JOIN payment_method pm ON CAST(sl.payment_type AS INTEGER) = pm.payment_method_id
+            WHERE CAST(sl.transaction_id AS INTEGER) = ?
+              AND CAST(sl.supplier_id AS INTEGER) IN (
+                SELECT suplierID FROM purchaseitem WHERE invoiceid = ? AND savedby = ?
+              )
+            ORDER BY sl.date ASC
+          `;
+
+          db.all(getHistoryQuery, [invoiceid, invoiceid, creatorId], (err, history) => {
+            if (err) return res.status(500).json({ success: false, message: "Server error" });
+            return res.status(200).json({
+              success: true,
+              data: history,
+              total_price,
+              paid_amount,
+            });
+          });
+        }
+      );
+    });
+  });
+};
+
 module.exports = {
   getPurchaseItemDetails,
   getReturnpurchase,
@@ -3648,4 +3702,5 @@ module.exports = {
   purReturnInsert,
   getPurchaseTransactions,
   getReturnItemInfoByID,
+  getPurchaseHistory,
 };

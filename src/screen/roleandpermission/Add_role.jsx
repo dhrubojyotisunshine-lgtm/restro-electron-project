@@ -17,6 +17,7 @@ import { AuthContext } from "../../store/AuthContext";
 import HasPermission from "../../store/HasPermission";
 
 import { useNavigate } from "react-router-dom";
+
 const modules = [
   "POS Invoice",
   "Order List",
@@ -111,6 +112,7 @@ const Add_role = () => {
   const [roleName, setRoleName] = useState("");
   const [roleDescription, setRoleDescription] = useState("");
   const [roleNameError, setRoleNameError] = useState("");
+  const [menuIdMap, setMenuIdMap] = useState({});
 const [roleDescriptionError, setRoleDescriptionError] = useState("");
   const [formData, setFormData] = useState(
     modules.reduce((acc, module) => {
@@ -123,6 +125,18 @@ const [roleDescriptionError, setRoleDescriptionError] = useState("");
       return acc;
     }, {})
   );
+  useEffect(() => {
+    axios.get(`${API_BASE_URL}/menuitems`, { headers: { Authorization: token } })
+      .then(res => {
+        const map = {};
+        res.data.data.forEach(item => {
+          map[item.menu_title] = item.menu_id;
+        });
+        setMenuIdMap(map);
+      })
+      .catch(err => console.error("Failed to fetch menu items", err));
+  }, []);
+
   const { isFullScreen, toggleFullScreen } = useFullScreen();
   const handleCheckboxChange = (module, permission) => {
     setFormData({
@@ -159,6 +173,7 @@ const [roleDescriptionError, setRoleDescriptionError] = useState("");
 
     const formattedData = Object.entries(formData).map(
       ([module, permissions]) => ({
+        menu_id: menuIdMap[module] || null,
         module_name:module,
         can_access: permissions.can_access ? 1 : 0,
         can_delete: permissions.can_delete ? 1 : 0,

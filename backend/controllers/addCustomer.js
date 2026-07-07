@@ -92,6 +92,42 @@ const getCustomers = async (req, res) => {
   }
 };
 
+const insertCustomer = (
+  customer_name,
+  customer_email,
+  customer_address,
+  customer_phone,
+  created_by,
+  res,
+) => {
+  const insertQuery = `
+    INSERT INTO customer_info
+    (customer_name, customer_email, customer_address, customer_phone, created_by)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  db.run(
+    insertQuery,
+    [customer_name, customer_email, customer_address, customer_phone, created_by],
+    function (err) {
+      if (err) {
+        console.error("Error inserting customer:", err);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to create customer",
+          error: err.message,
+        });
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: "Customer created successfully",
+        customer_id: this.lastID,
+      });
+    },
+  );
+};
+
 const createCustomer = async (req, res) => {
   try {
     const { customer_name, customer_email, customer_address, customer_phone } =
@@ -118,6 +154,7 @@ const createCustomer = async (req, res) => {
           customer_email,
           customer_address,
           customer_phone,
+          user_id,
           res,
         );
       }
@@ -167,6 +204,7 @@ const createCustomer = async (req, res) => {
               customer_email,
               customer_address,
               customer_phone,
+              created_by,
               res,
             );
           },

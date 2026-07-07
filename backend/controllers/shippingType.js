@@ -62,7 +62,7 @@ const getAllShippingMethods = async (req, res) => {
         queryParams.push(created_by);
       }
 
-      query += ` ORDER BY id DESC`;
+      query += ` ORDER BY ship_id DESC`;
 
       db.all(query, queryParams, (err, results) => {
         if (err) {

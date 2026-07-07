@@ -59,7 +59,7 @@ const SetProductionUnit = () => {
   const handleFoodChange = (e) => {
     const foodid = e.target.value;
     setSelectedFood(foodid);
-
+    setSelectedVariant("");
     fetchVariant(foodid);
   };
   // Handle variant selection change
@@ -291,7 +291,7 @@ const SetProductionUnit = () => {
                     <option value="">Select Option</option>
 
                     {variant.map((variantItem, index) => (
-                      <option key={index} value={variantItem.variantid}>
+                      <option key={index} value={String(variantItem.variantid)}>
                         {variantItem.variantName}
                       </option>
                     ))}

@@ -171,7 +171,7 @@ const KitchenList = () => {
   const handleEditClick = (id) => {
     setEditId(id);
     setIsModalOpen2(true);
-    axios.get(`${API_BASE_URL}/kitchen/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/kitchen/${id}`, { headers: { Authorization: token } }).then((response) => {
       setFormData2({
         kitchen_name: response.data.kitchen_name,
       });

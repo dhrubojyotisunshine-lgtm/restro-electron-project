@@ -620,7 +620,7 @@ const QrOrder = () => {
                                 {row.order_date}
                               </td>
                               <td className="py-2 px-4 border border-[#4CBBA1]">
-                                {row.totalamount}
+                                {row.bill_amount}
                               </td>
                               <td className="py-2 px-4 border border-[#4CBBA1]">
                                 <div className=" flex gap-x-2 font-bold ">

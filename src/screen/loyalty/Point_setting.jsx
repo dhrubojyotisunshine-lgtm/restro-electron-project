@@ -113,7 +113,7 @@ const Point_setting = () => {
 
     // Fetch data for the given ID
     axios
-      .get(`${API_BASE_URL}/loyaltypoint/${id}`)
+      .get(`${API_BASE_URL}/loyaltypoint/${id}`, { headers: { Authorization: token } })
 
       .then((response) => {
         setFormdata1({
@@ -139,7 +139,7 @@ const Point_setting = () => {
     e.preventDefault();
     let validationErrors = {};
 
-    if (!formdata1.amount.trim()) {
+    if (!String(formdata1.amount).trim()) {
       validationErrors.amount = "Amount is required";
     }
     if (!formdata1.earn_point) {

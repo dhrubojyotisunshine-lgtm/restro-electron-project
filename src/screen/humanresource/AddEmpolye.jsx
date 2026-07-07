@@ -161,7 +161,6 @@ const AddEmpolye = () => {
     rate: "",
     pay_frequency: "",
     pay_frequency_txt: "",
-    password: "",
   };
   const [formdata, setFormdata] = useState(initialFormData);
 

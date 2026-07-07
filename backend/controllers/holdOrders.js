@@ -303,6 +303,7 @@ const draftOrderPlace = (req, res) => {
     VAT,
     discount,
     table_id,
+    persons = 1,
   } = req.body;
 
   const user_id = req.id;
@@ -430,7 +431,7 @@ const draftOrderPlace = (req, res) => {
               detail.quantity,
               addOnIds,
               addOnQuantities,
-              detail.variantid,
+              detail.variantid ?? 0,
               0,
               0,
             ];
@@ -503,10 +504,17 @@ const draftOrderPlace = (req, res) => {
                   .json({ message: "Internal server error" });
               }
 
-              const updateTableStatusQuery =
-                "UPDATE rest_table SET status = 1 WHERE tableid = ?";
+              const updateTableStatusQuery = `
+                UPDATE rest_table
+                SET occupied_seats = CASE WHEN occupied_seats + ? >= person_capicity THEN person_capicity ELSE occupied_seats + ? END,
+                    status = CASE
+                      WHEN (occupied_seats + ?) >= person_capicity THEN 'booked'
+                      WHEN (occupied_seats + ?) > 0 THEN 'partial'
+                      ELSE 'free'
+                    END
+                WHERE tableid = ?`;
 
-              db.run(updateTableStatusQuery, [tableId], (err) => {
+              db.run(updateTableStatusQuery, [persons, persons, persons, persons, tableId], (err) => {
                 if (err) {
                   console.error("Error updating table status:", err);
                   return res
@@ -570,12 +578,14 @@ const draftOrderPlace = (req, res) => {
                   if (customer_type === 1 || customer_type === 99) {
                     const additionalQuery = `
                       INSERT INTO table_details(
-                        table_id, customer_id, order_id, time_enter, created_at
+                        table_id, customer_id, order_id, time_enter, total_people, created_at
                       )
-                      VALUES (?, ?, ?, TIME('now'), DATE('now'))
+                      VALUES (?, ?, ?, TIME('now'), ?, DATETIME('now'))
                     `;
 
-                    db.run(additionalQuery, [tableId, customer_id, orderId]);
+                    db.run(additionalQuery, [tableId, customer_id, orderId, persons], (err) => {
+                      if (err) console.error("Error inserting table_details:", err);
+                    });
                   }
 
                   const fetchCustomerOrderDataQuery = `
@@ -656,6 +666,7 @@ const updateOrder = async (req, res) => {
     VAT = 0,
     discount = 0,
     table_id,
+    persons = 1,
   } = req.body;
 
   if (
@@ -711,7 +722,7 @@ const updateOrder = async (req, res) => {
         detail.quantity,
         addOnIds,
         addOnQuantities,
-        detail.variantid,
+        detail.variantid ?? 0,
         0,
         0,
       );
@@ -793,9 +804,34 @@ const updateOrder = async (req, res) => {
     // Insert into table_details if dine-in
     if (customer_type === 1 || customer_type === 99) {
       const additionalQuery = `
-        INSERT INTO table_details(table_id, customer_id, order_id, time_enter, created_at) 
-        VALUES (?, ?, ?, TIME('now'), DATETIME('now'))`;
-      await dbQuery(additionalQuery, [table_id, customer_id, order_id]);
+        INSERT INTO table_details(table_id, customer_id, order_id, time_enter, total_people, created_at)
+        VALUES (?, ?, ?, TIME('now'), ?, DATETIME('now'))`;
+      await dbQuery(additionalQuery, [table_id, customer_id, order_id, persons]);
+    }
+
+    // Create KOT items so kitchen sees this order
+    const kotItems = {};
+    for (const detail of order_details) {
+      const foodRows = await dbQuery(
+        "SELECT ProductName, kitchenid FROM item_foods WHERE ProductsID = ?",
+        [detail.ProductsID]
+      );
+      const food = foodRows[0];
+      const kitchenId = Number(food?.kitchenid);
+      if (!kitchenId || isNaN(kitchenId)) continue;
+      if (!kotItems[kitchenId]) kotItems[kitchenId] = [];
+      kotItems[kitchenId].push({ name: food.ProductName, qty: detail.quantity });
+    }
+
+    await dbQuery("DELETE FROM kot_items WHERE order_id = ?", [order_id]);
+
+    for (const [kitchenId, items] of Object.entries(kotItems)) {
+      for (const item of items) {
+        await dbQuery(
+          "INSERT INTO kot_items(order_id, kitchen_id, item_name, qty, printed) VALUES (?, ?, ?, ?, ?)",
+          [order_id, kitchenId, item.name, item.qty, 1]
+        );
+      }
     }
 
     // Fetch customer order

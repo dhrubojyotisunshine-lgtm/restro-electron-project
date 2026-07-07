@@ -36,37 +36,37 @@ const showsplitorder = async (req, res) => {
 
       const menuQuery = `
   SELECT
-    om.row_id AS sub_id,
-    om.menu_id AS order_menu_id,
-    om.menuqty AS menu_qty,
-    om.varientid AS varient_id,
+    s.sub_id,
+    s.order_menu_id,
+    s.menu_qty,
+    s.varient_id,
     v.variantName,
     f.ProductsID,
     f.ProductName,
     f.productvat,
-    om.price AS total_price,
+    s.total_price,
     GROUP_CONCAT(a.add_on_id) AS add_on_ids,
     GROUP_CONCAT(a.add_on_name) AS add_on_names,
     GROUP_CONCAT(a.price) AS add_on_prices,
-    om.addonsqty
-  FROM order_menu om
+    s.adons_qty AS addonsqty
+  FROM sub_order s
 
-  LEFT JOIN item_foods f 
-    ON om.menu_id = f.ProductsID   -- ✅ FOOD NAME HERE
+  LEFT JOIN item_foods f
+    ON s.order_menu_id = f.ProductsID
 
-  LEFT JOIN variant v 
-    ON om.varientid = v.variantid
+  LEFT JOIN variant v
+    ON s.varient_id = v.variantid
 
-  LEFT JOIN add_ons a 
-    ON om.add_on_id IS NOT NULL
-    AND ',' || om.add_on_id || ',' LIKE '%,' || a.add_on_id || ',%'
+  LEFT JOIN add_ons a
+    ON s.adons_id IS NOT NULL
+    AND ',' || s.adons_id || ',' LIKE '%,' || a.add_on_id || ',%'
 
-  WHERE om.order_id = ?
+  WHERE s.order_id = ? AND s.status = 0
 
-  GROUP BY om.row_id
+  GROUP BY s.sub_id
 `;
 
-      db.all(menuQuery, [orderId], (err, menuItems) => {
+      db.all(menuQuery, [parseInt(orderId, 10)], (err, menuItems) => {
         if (err) return res.status(500).json({ message: "Menu error" });
 
         const structured = menuItems.map((item) => {
@@ -240,7 +240,8 @@ const mergeMakePayment = (req, res) => {
 
 const paymentSplitOrder = async (req, res) => {
   const { sub_order_ids, paidAmount, payment_method_id, discount } = req.body;
-
+console.log("=== paymentSplitOrder ===");
+console.log("Payload:", req.body);
   if (
     !Array.isArray(sub_order_ids) ||
     sub_order_ids.length === 0 ||
@@ -253,13 +254,19 @@ const paymentSplitOrder = async (req, res) => {
     // Step 1: Update discount and status for each sub_order_id
     for (const sub_id of sub_order_ids) {
       await new Promise((resolve, reject) => {
+        
         db.run(
           "UPDATE sub_order SET discount = ?, status = 1 WHERE sub_id = ?",
           [discount, sub_id],
-          (err) => {
+          function (err) {
             if (err) return reject(err);
+
+            console.log(
+              `UPDATE sub_order WHERE sub_id=${sub_id}, rows affected=${this.changes}`
+            );
+
             resolve();
-          },
+          }
         );
       });
     }
@@ -269,21 +276,42 @@ const paymentSplitOrder = async (req, res) => {
       sub_order_ids.map(
         (sub_id) =>
           new Promise((resolve, reject) => {
+         
             db.get(
-              "SELECT * FROM sub_order WHERE sub_id = ?",
-              [sub_id],
-              (err, row) => {
-                if (err) return reject(err);
-                if (!row) return reject(new Error("Sub-order not found"));
-                resolve(row);
-              },
-            );
+                "SELECT * FROM sub_order WHERE sub_id = ?",
+                [sub_id],
+                (err, row) => {
+
+                  console.log("Searching sub_id:", sub_id);
+                  console.log("Result:", row);
+
+                  if (err) return reject(err);
+
+                  if (!row) {
+                    console.log("Sub-order not found for sub_id:", sub_id);
+                    db.all(
+                      "SELECT rowid, * FROM sub_order ORDER BY rowid DESC LIMIT 20",
+                      (dumpErr, dumpRows) => {
+                        console.log(
+                          "Last 20 sub_order rows by rowid:",
+                          dumpErr ? dumpErr.message : dumpRows
+                        );
+                      }
+                    );
+                    return reject(new Error("Sub-order not found"));
+                  }
+
+                  resolve(row);
+                }
+              );
           }),
       ),
     );
 
     const order_id = subOrderDetails[0].order_id;
     const menu_ids = subOrderDetails.map((row) => row.order_menu_id);
+    console.log("subOrderDetails:", subOrderDetails);
+    console.log("order_id:", order_id, typeof order_id);
 
     // Step 3: Update order_menu food status
     const placeholders = menu_ids.map(() => "?").join(",");
@@ -387,7 +415,7 @@ const paymentSplitOrder = async (req, res) => {
       if (orderResult && orderResult.table_no !== 0) {
         await new Promise((resolve, reject) => {
           db.run(
-            "UPDATE rest_table SET status = 0 WHERE tableid = ?",
+            "UPDATE rest_table SET status = 0, occupied_seats = 0 WHERE tableid = ?",
             [orderResult.table_no],
             (err) => {
               if (err) return reject(err);
@@ -416,7 +444,7 @@ const paymentSplitOrder = async (req, res) => {
           [
             1,
             totalDiscount,
-            billDetails,
+            billDetails - totalDiscount,
             payment_method_id[0],
             new Date().toISOString(),
             order_id,

@@ -71,7 +71,7 @@ const makePayment = (req, res) => {
       const updateTable =
         table_no !== 0
           ? new Promise((resolve, reject) => {
-              const updateTableQuery = `UPDATE rest_table SET status = 0 WHERE tableid = ?`;
+              const updateTableQuery = `UPDATE rest_table SET status = 0, occupied_seats = 0 WHERE tableid = ?`;
               db.run(updateTableQuery, [table_no], function (err) {
                 if (err) {
                   console.error("Error updating rest_table:", err);

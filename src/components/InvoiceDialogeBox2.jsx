@@ -6,12 +6,13 @@ export const InvoiceDialogBox2 = React.forwardRef((props, ref) => {
   const APP_URL = import.meta.env.VITE_APP_URL;
   const VITE_IMG_URL=import.meta.env.VITE_IMG_URL
   const { userId, username } = useContext(AuthContext);
+  const token = localStorage.getItem("token");
   const [data, setData] = useState(null);
   const { billData } = props;
   console.log('Bill Data inside InvoiceDialogBox2:', billData); // Log bill data
   const fetchImageData = () => {
     axios
-      .get(`${API_BASE_URL}/websetting`)
+      .get(`${API_BASE_URL}/websetting`, { headers: { Authorization: token } })
       .then((response) => {
         setData(response.data.data);
       })

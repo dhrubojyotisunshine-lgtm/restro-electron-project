@@ -56,6 +56,8 @@ router.get(
   verifyToken,
   purchaseController.getAllStockIngredients,
 );
+// purchase transaction history
+router.get("/purchase/:purchaseid/history", verifyToken, purchaseController.getPurchaseHistory);
 // get supplier ledger data
 router.get("/supplierledger", purchaseController.getPurchaseTransactions);
 module.exports = router;

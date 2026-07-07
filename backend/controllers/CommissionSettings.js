@@ -76,7 +76,7 @@ const createCommissionSetting = (req, res) => {
   });
 
   function saveSettings(created_by) {
-    const checkQuery = `SELECT * FROM settings WHERE user_id = ? LIMIT 1`;
+    const checkQuery = `SELECT * FROM commission_settings WHERE user_id = ? LIMIT 1`;
 
     db.get(checkQuery, [created_by], (err, existing) => {
       if (err) {
@@ -88,7 +88,7 @@ const createCommissionSetting = (req, res) => {
 
       if (existing) {
         const updateQuery = `
-          UPDATE settings SET
+          UPDATE commission_settings SET
             restro_name = ?,
             email = ?,
             phone = ?,
@@ -132,7 +132,7 @@ const createCommissionSetting = (req, res) => {
         );
       } else {
         const insertQuery = `
-          INSERT INTO settings (
+          INSERT INTO commission_settings (
             user_id,
             restro_name,
             email,
@@ -245,8 +245,8 @@ const getAllCommissionSettings = (req, res) => {
     }
 
     const query = `
-      SELECT * 
-      FROM settings 
+      SELECT *
+      FROM commission_settings
       WHERE user_id = ?
       LIMIT 1
     `;
@@ -291,7 +291,7 @@ const updateCommissionSetting = (req, res) => {
   }
 
   const updateQuery = `
-    UPDATE settings SET
+    UPDATE commission_settings SET
       restro_name = ?,
       email = ?,
       phone = ?,
@@ -343,7 +343,7 @@ const updateCommissionSetting = (req, res) => {
 };
 
 const deleteCommissionSetting = (req, res) => {
-  const query = `DELETE FROM settings`;
+  const query = `DELETE FROM commission_settings`;
 
   db.run(query, [], function (err) {
     if (err) {

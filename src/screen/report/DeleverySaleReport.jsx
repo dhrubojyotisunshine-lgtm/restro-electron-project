@@ -151,7 +151,7 @@ const DeleverySaleReport = () => {
     const csvData = data.map((item) => ({
       // Map your data structure as needed
       shipping_Type: item.shipping_type === 1
-      ? "Walk In Customer"
+      ? "Dine In"
       : item.shipping_type === 2
       ? "Online Customer"
       : item.shipping_type === 3
@@ -197,7 +197,7 @@ const DeleverySaleReport = () => {
     data.forEach((item) => {
       worksheet.addRow({
         shipping_Type: item.shipping_type === 1
-        ? "Walk In Customer"
+        ? "Dine In"
         : item.shipping_type === 2
         ? "Online Customer"
         : item.shipping_type === 3
@@ -240,7 +240,7 @@ const DeleverySaleReport = () => {
     const rows = data.map((item) => [
       // Determine customer type based on shipping_type
       item.shipping_type === 1
-        ? "Walk In Customer"
+        ? "Dine In"
         : item.shipping_type === 2
         ? "Online Customer"
         : item.shipping_type === 3
@@ -250,7 +250,7 @@ const DeleverySaleReport = () => {
         : item.shipping_type === 99
         ? "Qr Customer"
         : "No Data Found",
-    
+
       // Use totalamount if available, otherwise fallback
       item.totalamount || "No Data Found",
     ]);
@@ -446,7 +446,7 @@ autoTable(doc,{
                             </td>
                             <td className="py-2 px-4 border border-[#4CBBA1]">
                               {  row.shipping_type === 1
-        ? "Walk In Customer"
+        ? "Dine In"
         : row.shipping_type === 2
         ? "Online Customer"
         : row.shipping_type === 3

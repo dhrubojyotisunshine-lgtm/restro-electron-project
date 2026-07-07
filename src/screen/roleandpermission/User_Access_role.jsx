@@ -167,7 +167,7 @@ const User_Access_role = () => {
         setUser("");
         setCmodal(false);
         setEditId(null);
-        setSelectedRoles([]); // Clear the selected roles after successful update
+        setSelectedRoles(null);
       })
       .catch((error) => {
         console.error("Error updating user role:", error);
@@ -184,7 +184,7 @@ const User_Access_role = () => {
     console.log("edit id ye i h ", editId);
     // Fetch data for the given ID
     axios
-      .get(`${API_BASE_URL}/useraccesss/${id}`)
+      .get(`${API_BASE_URL}/useraccesss/${id}`, { headers: { Authorization: token } })
       .then((response) => {
         const responseData = response.data.data; // Updated to access the 'data' object
 
@@ -232,7 +232,7 @@ const User_Access_role = () => {
       isValid = false;
     }
 
-    if (selectedRoles.length === 0) {
+    if (!selectedRoles) {
       setSelectedRolesError("Please select at least one role");
       isValid = false;
     }
@@ -248,7 +248,7 @@ const User_Access_role = () => {
     };
 
     axios
-      .put(`${API_BASE_URL}/useraccess/${editId}`, updatedData)
+      .put(`${API_BASE_URL}/useraccess/${editId}`, updatedData, { headers: { Authorization: token } })
       .then((response) => {
         console.log("User role updated successfully:", response.data);
         toast.success("User role updated successfully!");
@@ -257,7 +257,7 @@ const User_Access_role = () => {
         fetchRoles();
         setIsModalOpen(false);
         setEditId(null);
-        setSelectedRoles([]); // Clear the selected roles after successful update
+        setSelectedRoles(null);
       })
       .catch((error) => {
         console.error("Error updating user role:", error);
@@ -283,7 +283,7 @@ const User_Access_role = () => {
   };
   const DeleteUserAcess = (id) => {
     axios
-      .delete(`${API_BASE_URL}/useraccess/${id}`)
+      .delete(`${API_BASE_URL}/useraccess/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("delete user sucessfully..");
@@ -307,7 +307,7 @@ const User_Access_role = () => {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/getalluseraccesses`);
+      const response = await axios.get(`${API_BASE_URL}/getalluseraccesses`, { headers: { Authorization: token } });
       return response.data.data;
     } catch (error) {
       console.error("Error fetching data:", error);

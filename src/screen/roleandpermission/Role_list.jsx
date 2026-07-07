@@ -106,7 +106,7 @@ const Role_list = () => {
   };
   const DeleteUnit = (id) => {
     axios
-      .delete(`${API_BASE_URL}/roles/${id}`)
+      .delete(`${API_BASE_URL}/roles/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Role delete sucessfully..");
@@ -121,15 +121,32 @@ const Role_list = () => {
 const [editData, setEditData] = useState("");
 const handleEditClick = (id) => {
   // Fetch data for the given ID
-  axios.get(`${API_BASE_URL}/rolepermission/${id}`)
-    .then((response) => {
-      setEditData(response.data.data);
-      console.log(response.data);
-      navigate(`/edit-role/${id}`); // Navigate to the edit page with the role ID
-    })
-    .catch((error) => {
-      console.error('Error fetching data:', error);
-    });
+  // axios.get(`${API_BASE_URL}/rolepermission/${id}`)
+  //   .then((response) => {
+  //     setEditData(response.data.data);
+  //     console.log(response.data);
+  //     navigate(`/edit-role/${id}`); // Navigate to the edit page with the role ID
+  //   })
+  //   .catch((error) => {
+  //     console.error('Error fetching data:', error);
+  //   });
+  const token = localStorage.getItem("token");
+
+  axios.get(
+    `${API_BASE_URL}/rolepermission/${id}`,
+    {
+      headers: {
+        Authorization: token,
+      },
+    }
+  )
+  .then((response) => {
+    console.log("Role Permission Response:", response.data);
+    navigate(`/edit-role/${id}`);
+  })
+  .catch((error) => {
+    console.error("Role Permission API Error:", error.response?.data);
+  });
 };
 
 

@@ -55,7 +55,8 @@ const total = orderDetails.reduce((acc, item) => {
       }, 0)
     : 0; // Default to 0 if no add-ons
 
-  return acc + (qty * price) + vat + addonsPrice; // Accumulate the total
+  const vatAmount = (qty * price * vat) / 100;
+  return acc + (qty * price) + vatAmount + addonsPrice; // Accumulate the total
 }, 0).toFixed(2); 
 
   const calculateDiscountedAmount = (total, discount, type) => {
@@ -83,7 +84,7 @@ const total = orderDetails.reduce((acc, item) => {
  
   const payPayment = () => {
     const formData = {
-      payment_method_id: selectedMethod,
+      payment_method_id: [selectedMethod],
       paidAmount,
       sub_order_ids: Orderids,
       discount: discount,
@@ -133,7 +134,7 @@ const total = orderDetails.reduce((acc, item) => {
     {orderDetails.map((order, index) => {
       // Convert values to numbers
       const menuPrice = parseFloat(order.total_price) * parseInt(order.menu_qty);
-      const vatAmount = parseFloat(order.Product_vat);
+      const vatAmount = (menuPrice * parseFloat(order.Product_vat)) / 100;
       
       // Calculate total add-on price
       const addOnTotal = order.add_ons && order.add_ons.length > 0 
@@ -173,7 +174,7 @@ const total = orderDetails.reduce((acc, item) => {
                       </option>
                     ))}
                   </select>
-                  {(selectedMethod === 9 || selectedMethod === 4) && (
+                  {(selectedMethod === 9 || selectedMethod === 1) && (
                     <div className="mt-4">
                       <div className="w-full max-w-lg mx-auto p-8">
                         <div className="bg-white rounded-lg shadow-lg p-6">

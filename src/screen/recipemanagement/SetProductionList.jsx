@@ -151,6 +151,7 @@ const handleSearch = (e) => {
   const [variant, setVariant] = useState([]); // variant accourdin to food
   const [selectedFood, setSelectedFood] = useState(""); // Selected Food name
   const [selectedVariant, setSelectedVariant] = useState(""); // Selected variant
+  const [editVariantName, setEditVariantName] = useState(""); // Display name for edit modal
   const [ingredientlist, setIngredientlist] = useState([]); // ingrident information
   const[viwedata,setViewdata]=useState([])
   const [viewDataModal, setvieweDataModal] = useState(false);
@@ -187,7 +188,7 @@ const handleSearch = (e) => {
   const handleFoodChange = (e) => {
     const foodid = e.target.value;
     setSelectedFood(foodid);
-
+    setSelectedVariant("");
     fetchVariant(foodid);
   };
   // Handle variant selection change
@@ -266,6 +267,7 @@ const handleSearch = (e) => {
       // Set the selected food and variant
       setSelectedFood(foodDetails.foodid);
       setSelectedVariant(foodDetails.pvarientid);
+      setEditVariantName(foodDetails.variantName || "");
 
       // Pre-fill items from itemDetails
       if (itemDetails.length > 0) {
@@ -685,7 +687,7 @@ const deleteCategory = ({ foodid, pvarientid }) => {
                                   : "Not Found"}
                               </td>
                               <td className="py-2 px-4 border border-[#4CBBA1]">
-                                {row.totalAmount
+                                {row.totalAmount != null
                                   ? row.totalAmount.toFixed(2)
                                   : "Not Found"}
                               </td>
@@ -830,19 +832,12 @@ const deleteCategory = ({ foodid, pvarientid }) => {
      
                      <div className="flex-1">
                        <label className="text-gray-700 font-semibold mb-1">Variant Name*</label>
-                       <select
-  name="itemvid"
-  value={selectedVariant}
-  disabled
-  className="shadow border border-[#4CBBA1] rounded py-2 px-3 text-gray-900 w-full  cursor-not-allowed"
->
-  <option value="">Select Option</option>
-  {variant.map((variantItem, index) => (
-    <option key={index} value={variantItem.variantid}>
-      {variantItem.variantname}
-    </option>
-  ))}
-</select>
+                       <input
+  type="text"
+  value={editVariantName}
+  readOnly
+  className="shadow border border-[#4CBBA1] rounded py-2 px-3 text-gray-900 w-full cursor-not-allowed bg-gray-50"
+/>
 
                      </div>
                    </div>

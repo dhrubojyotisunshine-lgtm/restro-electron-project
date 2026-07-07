@@ -17,7 +17,8 @@ const Main = () => {
     const fetchFavicon = async () => {
       try {
         // Replace with your actual API endpoint
-        const response = await axios.get(`${API_BASE_URL}/websetting`);
+        const token = localStorage.getItem("token");
+        const response = await axios.get(`${API_BASE_URL}/websetting`, { headers: { Authorization: token } });
         const data = await response.data.data;
         const logoUrls = data?.map((val) => `${VITE_IMG_URL}${val.fevicon}`) || [];
         const link =

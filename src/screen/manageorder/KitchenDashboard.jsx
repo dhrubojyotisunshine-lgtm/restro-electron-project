@@ -13,7 +13,7 @@ const KitchenDashboard = () => {
   const [isOpen, setOpen] = useState(true);
   const { toggleFullScreen } = useFullScreen();
 
-  const [activeKitchen, setActiveKitchen] = useState(3);
+  const [activeKitchen, setActiveKitchen] = useState(null);
   const [kitchenData, setKitchenData] = useState([]);
   const [kotOrders, setKotOrders] = useState([]);
 
@@ -28,7 +28,7 @@ const KitchenDashboard = () => {
     const res = await axios.get(`${API_BASE_URL}/getkitchen`, {
       headers: { Authorization: token },
     });
-    setKitchenData(res.data);
+    return res.data || [];
   };
 
   // Get Orders
@@ -36,13 +36,25 @@ const KitchenDashboard = () => {
     const res = await axios.get(`${API_BASE_URL}/printkitchen/kot-list`, {
       headers: { Authorization: token },
     });
-
-    setKotOrders(res.data.data || []);
+    return res.data.data || [];
   };
 
   useEffect(() => {
-    getkitchenData();
-    getKitchenOrders();
+    const loadData = async () => {
+      const [kitchens, orders] = await Promise.all([getkitchenData(), getKitchenOrders()]);
+      setKitchenData(kitchens);
+      setKotOrders(orders);
+      // Auto-select the first kitchen that has pending orders, fallback to first kitchen
+      if (kitchens.length > 0) {
+        const kitchenWithOrders = kitchens.find((k) =>
+          orders.some((o) => Number(o.kitchen_id) === Number(k.kitchenid))
+        );
+        setActiveKitchen(
+          kitchenWithOrders ? kitchenWithOrders.kitchenid : kitchens[0].kitchenid
+        );
+      }
+    };
+    loadData();
   }, []);
 
   const filteredOrders = kotOrders.filter(
@@ -109,7 +121,7 @@ const KitchenDashboard = () => {
     }
 
     setConfirmAll(null);
-    getKitchenOrders();
+    setKotOrders(await getKitchenOrders());
   };
 
   // Accept Order
@@ -119,7 +131,9 @@ const KitchenDashboard = () => {
     if (!selectedItems[orderId] || selectedItems[orderId].length === 0) {
       setConfirmAll({
         order_id: orderId,
+        kitchen_id: kitchenId,
         items: order?.items || [],
+        action: "accept",
       });
       return;
     }
@@ -133,7 +147,7 @@ const KitchenDashboard = () => {
       { headers: { Authorization: token } },
     );
 
-    getKitchenOrders();
+    setKotOrders(await getKitchenOrders());
   };
 
   const handlePrepared = async (orderId, kitchenId) => {
@@ -144,7 +158,7 @@ const KitchenDashboard = () => {
         order_id: orderId,
         kitchen_id: kitchenId,
         items: order?.items || [],
-        action: "accept", // or "prepared"
+        action: "prepared",
       });
 
       return;
@@ -158,7 +172,7 @@ const KitchenDashboard = () => {
       { headers: { Authorization: token } },
     );
 
-    getKitchenOrders();
+    setKotOrders(await getKitchenOrders());
   };
 
   // Submit Reject

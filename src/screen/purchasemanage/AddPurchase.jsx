@@ -417,7 +417,9 @@ const AddPurchase = () => {
     }
 
     axios
-      .post(`${API_BASE_URL}/suppliers`, formData)
+      .post(`${API_BASE_URL}/suppliers`, formData, {
+        headers: { Authorization: token },
+      })
       .then((res) => {
         console.log(res.data);
         setCmodal(false);

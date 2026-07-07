@@ -6,10 +6,11 @@ export const ComponentToPrint = React.forwardRef((props, ref) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const VITE_IMG_URL=import.meta.env.VITE_IMG_URL
   const [data, setData] = useState([]);
+  const token = localStorage.getItem("token");
 
   const fetchImageData = () => {
     axios
-      .get(`${API_BASE_URL}/websetting`)
+      .get(`${API_BASE_URL}/websetting`, { headers: { Authorization: token } })
       .then((response) => {
         console.log("previwe",response)
         setData(response.data.data);

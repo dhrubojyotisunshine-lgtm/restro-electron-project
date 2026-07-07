@@ -234,7 +234,7 @@ const submitTableData = (e) => {
     toast.error("Please enter a valid table capacity.");
     return;
   }
-  if (!formData2.floorName || formData2.floorName.trim() === "") {
+  if (!formData2.floorName || String(formData2.floorName).trim() === "") {
     toast.error("Please select a floor.");
     return;
   }

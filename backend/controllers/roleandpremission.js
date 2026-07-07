@@ -316,6 +316,32 @@ const getAllUserAccesses = (req, res) => {
   });
 };
 
+const insertAccess = (fk_role_ids, fk_user_id, created_by, res) => {
+  const insertQuery = `
+    INSERT INTO sec_user_access_tbl (fk_role_id, fk_user_id, created_by)
+    VALUES (?, ?, ?)
+  `;
+
+  let completed = 0;
+  const errors = [];
+
+  fk_role_ids.forEach((roleId) => {
+    db.run(insertQuery, [parseInt(roleId, 10), parseInt(fk_user_id, 10), created_by], function (err) {
+      if (err) {
+        console.error("insertAccess error:", err.message);
+        errors.push(err.message);
+      }
+      completed++;
+      if (completed === fk_role_ids.length) {
+        if (errors.length > 0) {
+          return res.status(500).json({ success: false, message: "Failed to assign role access", error: errors[0] });
+        }
+        return res.status(200).json({ success: true, message: "User access assigned successfully" });
+      }
+    });
+  });
+};
+
 const createUserAccess = (req, res) => {
   const { fk_role_ids, fk_user_id } = req.body;
   const user_id = req.id;
@@ -509,7 +535,126 @@ const updateUserAccess = async (req, res) => {
     });
   }
 };
+const insertRoleWithPermissions = (
+  role_name,
+  role_description,
+  permissions,
+  owner_user_id,
+  date_time,
+  res
+) => {
 
+  const roleQuery = `
+    INSERT INTO sec_role_tbl
+    (
+      role_name,
+      role_description,
+      create_by,
+      date_time,
+      role_status
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  db.run(
+    roleQuery,
+    [
+      role_name,
+      role_description,
+      owner_user_id,
+      date_time,
+      1
+    ],
+    function (err) {
+
+      if (err) {
+        console.error("Role insert error:", err);
+
+        return res.status(500).json({
+          success: false,
+          message: "Failed to create role",
+          error: err.message,
+        });
+      }
+
+      const role_id = this.lastID;
+
+      if (!permissions || permissions.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "Role created successfully",
+          role_id,
+        });
+      }
+
+      console.log("[DIAG] role_id:", role_id, "| permissions received:", permissions.length);
+
+      db.all("SELECT menu_id, menu_title FROM sec_menu_item", [], (menuErr, menuItems) => {
+        console.log("[DIAG] sec_menu_item count:", menuItems ? menuItems.length : 0);
+        if (menuErr) console.error("[DIAG] menuItems error:", menuErr.message);
+
+        const menuMap = {};
+        (menuItems || []).forEach((item) => { menuMap[item.menu_title] = item.menu_id; });
+
+        const permissionQuery = `
+          INSERT INTO sec_role_permission
+          (id, role_id, menu_id, can_access, can_create, can_edit, can_delete, createby, createdate, module_name)
+          VALUES (
+            (SELECT COALESCE(MAX(id), 0) + 1 FROM sec_role_permission),
+            ?, ?, ?, ?, ?, ?, ?, ?, ?
+          )
+        `;
+
+        const insertErrors = [];
+
+        // db.serialize guarantees BEGIN → each INSERT → COMMIT run in strict order,
+        // so the COMMIT callback fires only after every INSERT callback has completed.
+        db.serialize(() => {
+          db.run("BEGIN TRANSACTION", (beginErr) => {
+            if (beginErr) console.error("[DIAG] BEGIN error:", beginErr.message);
+          });
+
+          permissions.forEach((p) => {
+            const menu_id = p.menu_id || menuMap[p.module_name] || null;
+            db.run(permissionQuery, [
+              role_id,
+              menu_id,
+              Number(p.can_access || 0),
+              Number(p.can_create || 0),
+              Number(p.can_edit || 0),
+              Number(p.can_delete || 0),
+              owner_user_id,
+              date_time,
+              p.module_name || ""
+            ], function(err) {
+              if (err) {
+                console.error("[DIAG] Insert error for", p.module_name, ":", err.message);
+                insertErrors.push(p.module_name);
+              }
+            });
+          });
+
+          db.run("COMMIT", function(commitErr) {
+            console.log("[DIAG] COMMIT — insertErrors:", insertErrors.length, "| commitErr:", commitErr ? commitErr.message : "none");
+
+            // Verify rows actually landed in the DB
+            db.get("SELECT COUNT(*) AS cnt FROM sec_role_permission WHERE role_id = ?", [role_id], (verifyErr, row) => {
+              console.log("[DIAG] Verify count for role_id", role_id, ":", row ? row.cnt : "err", verifyErr ? verifyErr.message : "");
+
+              if (commitErr) {
+                return res.status(500).json({ success: false, message: "Permission insert failed at COMMIT", error: commitErr.message });
+              }
+              if (insertErrors.length > 0) {
+                return res.status(500).json({ success: false, message: `${insertErrors.length} permission(s) failed`, failedModules: insertErrors });
+              }
+              return res.status(200).json({ success: true, message: "Role and permissions created successfully", role_id });
+            });
+          });
+        });
+      });
+    }
+  );
+};
 const createRolePermission = async (req, res) => {
   try {
     const { role_name, role_description, permissions } = req.body;
@@ -627,7 +772,7 @@ const createRolePermission = async (req, res) => {
 };
 const getRolePermissionById = async (req, res) => {
   try {
-    const role_id = req.params.role_id;
+    const role_id = parseInt(req.params.role_id, 10);
     console.log("role_id:", role_id);
 
     const role = await dbQuery("SELECT * FROM sec_role_tbl WHERE role_id = ?", [
@@ -636,17 +781,26 @@ const getRolePermissionById = async (req, res) => {
 
     console.log("Raw role:", role);
 
-    if (!role) {
+    if (!role || role.length === 0) {
       return res.status(404).json({
         success: false,
         message: "Role not found",
       });
     }
 
-    const permissionsQueryResult = await dbQuery(
-      "SELECT * FROM sec_role_permission WHERE role_id = ?",
-      [role_id],
-    );
+const permissionsQueryResult = await new Promise((resolve, reject) => {
+  db.all(
+    "SELECT * FROM sec_role_permission WHERE role_id = ?",
+    [role_id],
+    (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    }
+  );
+});
+
+    console.log("role_id received:", role_id);
+    console.log("permissionsQueryResult:", permissionsQueryResult);
 
     res.status(200).json({
       success: true,
@@ -666,7 +820,7 @@ const getRolePermissionById = async (req, res) => {
 
 const updateRolePermission = async (req, res) => {
   try {
-    const id = req.params.role_id;
+    const id = parseInt(req.params.role_id, 10);
     const { role_name, role_description, permissions } = req.body;
     const updated_by = req.id;
     console.log(updated_by, "up");
@@ -707,43 +861,55 @@ const updateRolePermission = async (req, res) => {
               });
             }
 
-            // Prepare new permissions
-            const values = [];
-            const placeholders = permissions.map((perm) => {
-              values.push(
-                id,
-                perm.module_name,
-                perm.can_access || 0,
-                perm.can_create || 0,
-                perm.can_edit || 0,
-                perm.can_delete || 0,
-                date_time,
-                updated_by,
-              );
-              return "(?, ?, ?, ?, ?, ?, ?, ?)";
-            });
+            // Dynamically resolve menu_id from sec_menu_item by module_name
+            db.all("SELECT menu_id, menu_title FROM sec_menu_item", [], (menuErr, menuItems) => {
+              const menuMap = {};
+              (menuItems || []).forEach((item) => { menuMap[item.menu_title] = item.menu_id; });
 
-            const insertQuery = `
-              INSERT INTO sec_role_permission 
-              (role_id, module_name, can_access, can_create, can_edit, can_delete, createdate, createby) 
-              VALUES ${placeholders.join(", ")}
-            `;
+              const permissionQuery = `
+                INSERT INTO sec_role_permission
+                (id, role_id, menu_id, module_name, can_access, can_create, can_edit, can_delete, createdate, createby)
+                VALUES (
+                  (SELECT COALESCE(MAX(id), 0) + 1 FROM sec_role_permission),
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+              `;
 
-            db.run(insertQuery, values, function (insertErr) {
-              if (insertErr) {
-                console.error(
-                  "Error inserting updated permissions:",
-                  insertErr,
-                );
-                return res.status(500).json({
-                  success: false,
-                  message: "Failed to insert updated permissions",
+              const stmt = db.prepare(permissionQuery);
+              const insertErrors = [];
+
+              permissions.forEach((perm) => {
+                const menu_id = perm.menu_id || menuMap[perm.module_name] || null;
+                stmt.run([
+                  id,
+                  menu_id,
+                  perm.module_name,
+                  perm.can_access || 0,
+                  perm.can_create || 0,
+                  perm.can_edit || 0,
+                  perm.can_delete || 0,
+                  date_time,
+                  updated_by,
+                ], function(insertErr) {
+                  if (insertErr) {
+                    console.error("Error inserting permission for", perm.module_name, ":", insertErr.message);
+                    insertErrors.push(perm.module_name);
+                  }
                 });
-              }
+              });
 
-              return res.status(200).json({
-                success: true,
-                message: "Role and permissions updated successfully",
+              stmt.finalize((finalErr) => {
+                if (finalErr || insertErrors.length > 0) {
+                  return res.status(500).json({
+                    success: false,
+                    message: "Failed to insert updated permissions",
+                    failedModules: insertErrors,
+                  });
+                }
+                return res.status(200).json({
+                  success: true,
+                  message: "Role and permissions updated successfully",
+                });
               });
             });
           },

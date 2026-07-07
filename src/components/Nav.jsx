@@ -25,6 +25,7 @@ const Nav = () => {
   const [data, setData] = useState(null);
   const [data2, setData2] = useState(null);
   const { isLogin, logoutUser } = useContext(AuthContext);
+  const token = localStorage.getItem("token");
   useEffect(() => {
     Menus.forEach((menu, index) => {
       if (menu.submanu) {
@@ -277,7 +278,7 @@ const Nav = () => {
 
   const fetchImageData = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/websetting`);
+      const response = await axios.get(`${API_BASE_URL}/websetting`, { headers: { Authorization: token } });
       console.log("API Response:", response);
 
       if (response?.data?.data && Array.isArray(response.data.data)) {
@@ -301,7 +302,7 @@ const Nav = () => {
 
   const fetchImageData2 = () => {
     axios
-      .get(`${API_BASE_URL}/websetting`)
+      .get(`${API_BASE_URL}/websetting`, { headers: { Authorization: token } })
       .then((response) => {
         setData2(response.data.data);
         console.log("data shiw to imag", data);

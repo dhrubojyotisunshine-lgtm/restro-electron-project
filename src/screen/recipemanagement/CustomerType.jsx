@@ -93,7 +93,7 @@ const CustomerType = () => {
     const csvData = data.map((item) => ({
       // Map your data structure as needed
 
-      Customer_Type: item.customer_type,
+      Customer_Type: item.customer_type === "Walk In Customer" ? "Dine In" : item.customer_type,
       Customet_Type_Id: item.customer_type_id,
     }));
 
@@ -124,7 +124,7 @@ const CustomerType = () => {
     // Add rows
     data.forEach((item) => {
       worksheet.addRow({
-        customer_type: item.customer_type,
+        customer_type: item.customer_type === "Walk In Customer" ? "Dine In" : item.customer_type,
         customet_type_id: item.customer_type_id,
       });
     });
@@ -150,7 +150,7 @@ const CustomerType = () => {
 
     // Map the data to rows for the PDF
     const rows = data.map((item) => [
-      item.customer_type,
+      item.customer_type === "Walk In Customer" ? "Dine In" : item.customer_type,
       item.customer_type_id,
     ]);
 
@@ -295,7 +295,7 @@ autoTable(doc,{
                               {index + 1 + (currentPage - 1) * 5}
                             </td>
                             <td className="py-2 px-4 border border-[#4CBBA1]">
-                              {row.customer_type}
+                              {row.customer_type === "Walk In Customer" ? "Dine In" : row.customer_type}
                             </td>
                             <td className="py-2 px-4 border border-[#4CBBA1]">
                               {row.customer_type_id}

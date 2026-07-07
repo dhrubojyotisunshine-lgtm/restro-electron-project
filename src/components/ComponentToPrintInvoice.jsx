@@ -8,9 +8,10 @@ export const ComponentToPrintInvoice = React.forwardRef((props, ref) => {
     const VITE_IMG_URL=import.meta.env.VITE_IMG_URL
     const [data, setData] = useState([]);
     const { userId, username } = useContext(AuthContext);
+    const token = localStorage.getItem("token");
     const fetchImageData = () => {
       axios
-        .get(`${API_BASE_URL}/websetting`)
+        .get(`${API_BASE_URL}/websetting`, { headers: { Authorization: token } })
         .then((response) => {
           console.log("previwe",response)
           setData(response.data.data);

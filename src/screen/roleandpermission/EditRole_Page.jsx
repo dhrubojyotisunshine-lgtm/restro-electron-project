@@ -9,38 +9,85 @@ import { LiaLanguageSolid } from "react-icons/lia";
 import { MdOutlineZoomOutMap } from "react-icons/md";
 import { toast } from "react-toastify";
 import useFullScreen from "../../components/useFullScreen";
+
+const ALL_MODULES = [
+  "POS Invoice","Order List","Pending Order","Complete Order","Cancel Order",
+  "All Reservations","Add Booking","Unavailable today","Purchase Item","Add Purchase",
+  "Purchase Return","Return Invoice","Supplier Manage","Supplier Ledger",
+  "Stock out ingredients","Add Category","Category List","Add Food","Food List",
+  "Menu Type","Add Ons","Ingredient Stock List","Stock Out Ingredient",
+  "Set Production Unit","Point Setting","Customer Point List","Production Set List",
+  "Add Production","Permission Setup","Add Role","Role List","User Access Role",
+  "Add User","User List","Purchase Report","Stock Report (Food Item)",
+  "Stock Report (Kitchen)","Delevery Type Sale Report","Sale Report",
+  "Waiter Sale Report","Service Charge Report","Sale Report Cashie",
+  "Item Sales Report","Cash Register Report","Sale Report Filtering",
+  "Sale By Date","Sale By Table","Commission Report","Unit Measurement",
+  "Ingredients","Kitchen List","Printers","Table & Floor Manage","All Table-QR",
+  "Add Customers","Customer Type","Commission Setup","Designation",
+  "Addexpense Item","Add Expense","Add Employee","Manage Employee","Department",
+  "Division","Holiday","Leave Type","Leave Application","Packaging Food",
+  "Purchase Food Waste","Making Food Waste","Common Setting","Sound Setting",
+  "Shipping Type",
+];
+
 const EditRole_Page = () => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const [isOpen, setOpen] = useState(true);
-  const { id } = useParams(); // Get the ID from the URL
+  const token = localStorage.getItem("token");
+  const { id } = useParams();
   const [roleName, setRoleName] = useState("");
   const [roleDescription, setRoleDescription] = useState("");
   const [permissions, setPermissions] = useState([]);
+  const [menuIdMap, setMenuIdMap] = useState({});
   const[createby,setCreateby]=useState()
   const { isFullScreen, toggleFullScreen } = useFullScreen();
   const navigate = useNavigate();
+
   useEffect(() => {
-    // Fetch data for the given ID when the component mounts
     axios
-      .get(`${API_BASE_URL}/rolepermission/${id}`)
+      .get(`${API_BASE_URL}/menuitems`, { headers: { Authorization: token } })
+      .then((res) => {
+        const map = {};
+        res.data.data.forEach((item) => { map[item.menu_title] = item.menu_id; });
+        setMenuIdMap(map);
+      })
+      .catch((err) => console.error("Failed to fetch menu items", err));
+  }, []);
+
+  useEffect(() => {
+    axios
+      .get(`${API_BASE_URL}/rolepermission/${id}`, { headers: { Authorization: token } })
       .then((response) => {
-        const roleData = response.data.data.role;
-        const permissionsData = response.data.data.permissionsQueryResult;
+        const roleData = response.data.data.role[0];
+        const dbPermissions = response.data.data.permissions || [];
+
+        const dbMap = {};
+        dbPermissions.forEach((p) => { dbMap[p.module_name] = p; });
+
+        const mergedPermissions = ALL_MODULES.map((moduleName) => ({
+          module_name: moduleName,
+          menu_id: dbMap[moduleName]?.menu_id || null,
+          can_access: dbMap[moduleName]?.can_access || 0,
+          can_create: dbMap[moduleName]?.can_create || 0,
+          can_edit: dbMap[moduleName]?.can_edit || 0,
+          can_delete: dbMap[moduleName]?.can_delete || 0,
+        }));
 
         setRoleName(roleData.role_name);
         setCreateby(roleData.create_by);
         setRoleDescription(roleData.role_description);
-        setPermissions(permissionsData);
+        setPermissions(mergedPermissions);
       })
       .catch((error) => {
         console.error("Error fetching data:", error);
       });
   }, [id]);
 
-  const handleCheckboxChange = (moduleId, permissionType) => {
+  const handleCheckboxChange = (moduleName, permissionType) => {
     setPermissions((prevPermissions) =>
       prevPermissions.map((permission) =>
-        permission.id === moduleId
+        permission.module_name === moduleName
           ? {
               ...permission,
               [permissionType]: permission[permissionType] ? 0 : 1,
@@ -56,16 +103,17 @@ const EditRole_Page = () => {
     const updatedRoleData = {
       role_name: roleName,
       role_description: roleDescription,
-      permissions: permissions,
+      permissions: permissions.map((p) => ({
+        ...p,
+        menu_id: p.menu_id || menuIdMap[p.module_name] || null,
+      })),
       createby:createby
     };
 
-    // PUT request to update the data
     axios
-      .put(`${API_BASE_URL}/rolepermission/${id}`, updatedRoleData)
+      .put(`${API_BASE_URL}/rolepermission/${id}`, updatedRoleData, { headers: { Authorization: token } })
       .then((response) => {
-        console.log("ress",response)
-        console.log("Role updated successfully:",updatedRoleData);
+        console.log("Role updated successfully:", updatedRoleData);
         toast.success("Roles Update Sucessfully..");
         navigate("/rolelist");
         // Optionally, navigate to another page or show a success message
@@ -163,8 +211,8 @@ const EditRole_Page = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {permissions.map((permission, index) => (
-                              <tr key={permission.id}>
+                            {(permissions || []).map((permission, index) => (
+                              <tr key={permission.module_name}>
                                 <td className="py-2 px-4 border border-[#4CBBA1]">
                                   {index + 1}
                                 </td>
@@ -178,7 +226,7 @@ const EditRole_Page = () => {
                                     checked={permission.can_access === 1}
                                     onChange={() =>
                                       handleCheckboxChange(
-                                        permission.id,
+                                        permission.module_name,
                                         "can_access"
                                       )
                                     }
@@ -191,7 +239,7 @@ const EditRole_Page = () => {
                                     checked={permission.can_create === 1}
                                     onChange={() =>
                                       handleCheckboxChange(
-                                        permission.id,
+                                        permission.module_name,
                                         "can_create"
                                       )
                                     }
@@ -204,7 +252,7 @@ const EditRole_Page = () => {
                                     checked={permission.can_edit === 1}
                                     onChange={() =>
                                       handleCheckboxChange(
-                                        permission.id,
+                                        permission.module_name,
                                         "can_edit"
                                       )
                                     }
@@ -217,7 +265,7 @@ const EditRole_Page = () => {
                                     checked={permission.can_delete === 1}
                                     onChange={() =>
                                       handleCheckboxChange(
-                                        permission.id,
+                                        permission.module_name,
                                         "can_delete"
                                       )
                                     }

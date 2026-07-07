@@ -8,7 +8,7 @@ import { LiaLanguageSolid } from "react-icons/lia";
 import { MdOutlineZoomOutMap } from "react-icons/md";
 import { FaMagnifyingGlass } from "react-icons/fa6";
 import { AuthContext } from "../../store/AuthContext";
-import { FaRegEdit } from "react-icons/fa";
+import { FaRegEdit, FaHistory } from "react-icons/fa";
 import { IoDocumentTextOutline, IoWalletOutline } from "react-icons/io5";
 import { FaRegTrashCan } from "react-icons/fa6";
 import axios from "axios";
@@ -60,6 +60,29 @@ const PurchaseItem = () => {
   const [errors, setErrors] = useState({});
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [extraPayment, setExtraPayment] = useState("");
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const handleViewHistory = (purID) => {
+    setHistoryLoading(true);
+    setShowHistoryModal(true);
+    axios
+      .get(`${API_BASE_URL}/purchase/${purID}/history`, {
+        headers: { Authorization: token },
+      })
+      .then((res) => {
+        setHistoryData(res.data.data || []);
+      })
+      .catch((error) => {
+        console.error("Error fetching purchase history:", error);
+        toast.error("Failed to load history");
+        setHistoryData([]);
+      })
+      .finally(() => {
+        setHistoryLoading(false);
+      });
+  };
 
   const navigate = useNavigate();
 
@@ -779,6 +802,16 @@ const PurchaseItem = () => {
                                       </button>
                                     </Tooltip>
                                   </HasPermission>
+                                  <Tooltip message="History">
+                                    <button
+                                      onClick={() =>
+                                        handleViewHistory(row.purID)
+                                      }
+                                      className="bg-[#4CBBA1] p-1 rounded-sm text-white hover:scale-105"
+                                    >
+                                      <FaHistory />
+                                    </button>
+                                  </Tooltip>
                                 </div>
                               </td>
                             </tr>
@@ -1311,6 +1344,74 @@ const PurchaseItem = () => {
                 className="px-4 py-2 bg-[#4CBBA1] text-white rounded-lg hover:bg-green-700"
               >
                 Pay Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHistoryModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[60]">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-[500px] max-h-[80vh] overflow-y-auto relative z-[70]">
+            <h2 className="text-lg font-semibold mb-4">Transaction History</h2>
+
+            {historyLoading ? (
+              <p className="text-center text-gray-500">Loading...</p>
+            ) : historyData.length === 0 ? (
+              <p className="text-center text-gray-500">No transactions found</p>
+            ) : (
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="bg-[#4CBBA1] text-white">
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Description</th>
+                    <th className="px-3 py-2">Amount</th>
+                    <th className="px-3 py-2">Payment Mode</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyData.map((entry, idx) => (
+                    <tr key={idx} className="border-b border-gray-200">
+                      <td className="px-3 py-2">
+                        {entry.date
+                          ? new Date(entry.date).toLocaleDateString("en-GB")
+                          : "-"}
+                      </td>
+                      <td
+                        className={`px-3 py-2 font-semibold ${
+                          entry.d_c === "c"
+                            ? parseFloat(entry.amount) < 0
+                              ? "text-red-600"
+                              : "text-blue-600"
+                            : "text-green-600"
+                        }`}
+                      >
+                        {entry.d_c === "c"
+                          ? parseFloat(entry.amount) < 0
+                            ? "Return"
+                            : "Invoice"
+                          : "Payment"}
+                      </td>
+                      <td className="px-3 py-2">{entry.description}</td>
+                      <td className="px-3 py-2">
+                        {parseFloat(entry.amount || 0).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {entry.d_c === "d" ? (entry.payment_mode || "-") : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="px-4 py-2 bg-gray-400 text-white rounded-lg"
+              >
+                Close
               </button>
             </div>
           </div>

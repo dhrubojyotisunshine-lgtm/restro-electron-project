@@ -165,23 +165,30 @@ const Log_in = () => {
     setIsLoading(true);
 
     try {
-      // ✅ 1. Activate EXE from live server
-      const activateResponse = await axios.post(
-        `https://krayon.softwarestesting.co.in/api/activate-exe`,
-        {
-          email,
-          password,
-          subscription_key: subscriptionKey,
-        },
-      );
+      // ✅ 1. Activate EXE from live server (optional — local login still works if this fails)
+      try {
+        const activateResponse = await axios.post(
+          `https://krayon.softwarestesting.co.in/api/activate-exe`,
+          {
+            email,
+            password,
+            subscription_key: subscriptionKey,
+          },
+        );
 
-      if (activateResponse.data.success) {
-        const syncData = activateResponse.data.data;
+        if (activateResponse.data.success) {
+          const syncData = activateResponse.data.data;
 
-        // ✅ 2. Save live activation data into local SQLite
-        await axios.post(`${API_BASE_URL}/sync-activation-data`, syncData);
-
-        toast.success("EXE activated successfully");
+          // ✅ 2. Save live activation data into local SQLite
+          try {
+            await axios.post(`${API_BASE_URL}/sync-activation-data`, syncData);
+            toast.success("EXE activated successfully");
+          } catch (syncErr) {
+            console.warn("Activation sync failed:", syncErr.message);
+          }
+        }
+      } catch (activateErr) {
+        console.warn("Live activation unavailable, proceeding with local login:", activateErr.message);
       }
 
       // ✅ 3. Login from local SQLite

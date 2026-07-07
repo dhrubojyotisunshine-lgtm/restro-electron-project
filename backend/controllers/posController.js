@@ -335,6 +335,83 @@ const orderPlace = (req, res) => {
                   );
                 });
 
+                // Split Pay needs a sub_order row per line item (same shape
+                // holdOrders.js already creates for drafts), tagged
+                // source_type='normal' so origin stays distinguishable.
+                const subOrderRows = order_details.map((detail) => [
+                  orderId,
+                  customer_id,
+                  VAT,
+                  discount,
+                  detail.ProductsID,
+                  detail.price,
+                  detail.quantity,
+                  "",
+                  "",
+                  0,
+                  detail.variantid || 0,
+                  "normal",
+                ]);
+
+                const subOrderPlaceholders = subOrderRows
+                  .map(() => `(?,?,?,?,?,?,?,?,?,?,?,?)`)
+                  .join(",");
+
+                await new Promise((resolve, reject) => {
+                  db.run(
+                    `INSERT INTO sub_order (
+        order_id, customer_id, vat, discount, order_menu_id,
+        total_price, menu_qty, adons_id, adons_qty, status, varient_id,
+        source_type
+      ) VALUES ${subOrderPlaceholders}`,
+                    subOrderRows.flat(),
+                    (err) => {
+                      if (err) return reject(err);
+                      resolve();
+                    },
+                  );
+                });
+
+                // paymentSplitOrder requires a bill row to exist (same
+                // pattern already used by holdOrders.js/webUser.js); orderPlace()
+                // never created one, which blocked Split Pay for every normal order.
+                const update_by = created_by;
+                const update_date = new Date().toISOString().split("T")[0];
+                const service_charge = 0;
+                const total_amount =
+                  grand_total -
+                  service_charge -
+                  (VAT || 0) -
+                  (discount || 0);
+
+                await new Promise((resolve, reject) => {
+                  db.run(
+                    `INSERT INTO bill (
+        customer_id, create_by, update_by, update_date, order_id,
+        total_amount, discount, service_charge, shipping_type, VAT,
+        bill_amount, bill_date, bill_time, create_at,
+        bill_status, payment_method_id, create_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE('now'), TIME('now'), DATE('now'), 0, 0, DATE('now'))`,
+                    [
+                      customer_id,
+                      created_by,
+                      update_by,
+                      update_date,
+                      orderId,
+                      total_amount,
+                      discount || 0,
+                      service_charge,
+                      null,
+                      VAT || 0,
+                      grand_total,
+                    ],
+                    (err) => {
+                      if (err) return reject(err);
+                      resolve();
+                    },
+                  );
+                });
+
                 for (const kitchenId in kotItems) {
                   for (const item of kotItems[kitchenId]) {
                     await new Promise((resolve, reject) => {

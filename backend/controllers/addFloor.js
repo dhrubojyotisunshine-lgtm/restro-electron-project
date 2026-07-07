@@ -201,7 +201,7 @@ const getFloors = async (req, res) => {
       }
 
       let getFloorsQuery = `
-        SELECT * FROM tbl_tablefloor
+        SELECT rowid AS tbfloorid, * FROM tbl_tablefloor
         WHERE created_by = ?
       `;
 
@@ -251,7 +251,7 @@ const updateFloor = async (req, res) => {
 
     // Step 1: Fetch the current floor data
     const fetchCurrentDataSql =
-      "SELECT * FROM tbl_tablefloor WHERE tbfloorid = ?";
+      "SELECT rowid AS tbfloorid, * FROM tbl_tablefloor WHERE rowid = ?";
     db.get(fetchCurrentDataSql, [id], (fetchErr, currentData) => {
       if (fetchErr) {
         console.error("Database fetch error:", fetchErr);
@@ -273,9 +273,9 @@ const updateFloor = async (req, res) => {
 
       // Step 3: Update the floor record
       const updateFloorQuery = `
-        UPDATE tbl_tablefloor 
-        SET floorName = ? 
-        WHERE tbfloorid = ?
+        UPDATE tbl_tablefloor
+        SET floorName = ?
+        WHERE rowid = ?
       `;
 
       db.run(
@@ -320,7 +320,7 @@ const getFloorById = async (req, res) => {
         .json({ success: false, message: "Floor ID is required" });
     }
 
-    const getFloorByIdQuery = `SELECT * FROM tbl_tablefloor WHERE 	tbfloorid  = ?`;
+    const getFloorByIdQuery = `SELECT rowid AS tbfloorid, * FROM tbl_tablefloor WHERE rowid = ?`;
 
     db.all(getFloorByIdQuery, [id], (err, result) => {
       if (err) {
@@ -352,7 +352,7 @@ const deleteFloor = async (req, res) => {
   try {
     const { floorID } = req.params;
 
-    const deleteFloorQuery = `DELETE FROM tbl_tablefloor WHERE tbfloorid = ?`;
+    const deleteFloorQuery = `DELETE FROM tbl_tablefloor WHERE rowid = ?`;
     db.run(deleteFloorQuery, [floorID], function (err) {
       if (err) {
         console.log("Error deleting floor:", err);

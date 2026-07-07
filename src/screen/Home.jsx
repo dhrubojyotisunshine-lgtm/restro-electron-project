@@ -317,6 +317,7 @@ const Home = () => {
   const [openSubmenuIndex, setOpenSubmenuIndex] = useState(null);
   const [orders, setOrders] = useState([]);
   const { permissions, isAdmin } = useContext(AuthContext);
+  const token = localStorage.getItem("token");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const selectPage = (page) => {
@@ -338,7 +339,7 @@ const Home = () => {
   };
   const rcenttransaction = () => {
     axios
-      .get(`${API_BASE_URL}/checkin`)
+      .get(`${API_BASE_URL}/checkin`, { headers: { Authorization: token } })
       .then((res) => {
         // setOrders(res.data.data);
         setOrders(res.data.data || []);
