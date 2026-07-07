@@ -289,7 +289,7 @@ const handleSubmit3 = (e) => {
   }
 
   axios
-    .put(`${API_BASE_URL}/floors/${editId3}`, formData3)
+    .put(`${API_BASE_URL}/floors/${editId3}`, formData3, { headers: { Authorization: token } })
     .then(() => {
       toast.success("Floor updated successfully!");
       GetFloorData();
