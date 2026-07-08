@@ -35,6 +35,7 @@ const shippingRoute = require("./router/shippingTypeRoute");
 const pointRoute = require("./router/loyaltyRoute");
 const splitorderRoute = require("./router/splitOrderRouts");
 const kotprint = require("./router/printkotRoute");
+const subscriptionRoute = require("./router/subscriptionRoute");
 const {
   syncCategories,
   syncFloors,
@@ -96,6 +97,7 @@ app.use("/api", shippingRoute);
 app.use("/api", pointRoute);
 app.use("/api", splitorderRoute);
 app.use("/api", kotprint);
+app.use("/api", subscriptionRoute);
 app.use("/uploads", express.static("uploads"));
 
 // Error handling middleware (generic error handler)

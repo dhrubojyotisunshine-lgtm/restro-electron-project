@@ -31,11 +31,12 @@ router.post(
   userControllers.addUser,
 );
 router.get("/all", verifyToken, userControllers.getUsers);
-router.delete("/deleteuser/:id", userControllers.deleteUser);
-router.get("/userbyid/:id", userControllers.getUserById);
+router.delete("/deleteuser/:id", verifyToken, userControllers.deleteUser);
+router.get("/userbyid/:id", verifyToken, userControllers.getUserById);
 router.put(
   "/updateuser/:id",
   upload.single("image"),
+  verifyToken,
   userControllers.updateUser,
 );
 
@@ -56,7 +57,7 @@ router.get(
 );
 
 // check-in
-router.get("/checkin", userControllers.checkIncheckOut);
+router.get("/checkin", verifyToken, userControllers.checkIncheckOut);
 
 // forgot pass
 router.post("/forgetpassword", userControllers.ForgetPasswordController);

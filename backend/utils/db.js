@@ -179,12 +179,52 @@ const db = new sqlite3.Database(
     seedMenuItems();
     migrateSubOrderSourceType();
     migrateCommissionSettings();
+    migrateSubscriptionIndexes();
 
     if (process.send) {
       process.send("backend-ready");
     }
   },
 );
+
+// ---------------- MIGRATE SUBSCRIPTION UNIQUE INDEXES ----------------
+// SQLite ignores MySQL PRIMARY KEY on ALTER TABLE, so plan_id and user_plan_id
+// end up with no UNIQUE constraint — INSERT OR IGNORE silently inserts duplicates.
+// These indexes make INSERT OR IGNORE behave correctly and prevent JOIN multiplication.
+function migrateSubscriptionIndexes() {
+  db.serialize(() => {
+    // Deduplicate before creating indexes — SQLite ignores MySQL's PRIMARY KEY,
+    // so these tables accumulate duplicate rows on repeated syncs.
+    db.run(
+      `DELETE FROM subscription_plans WHERE rowid NOT IN (SELECT MIN(rowid) FROM subscription_plans GROUP BY plan_id)`,
+      function (err) {
+        if (err) console.error("⚠️ subscription_plans dedup:", err.message);
+        else if (this.changes > 0) console.log(`✅ Removed ${this.changes} duplicate subscription_plans rows`);
+      }
+    );
+    db.run(
+      `DELETE FROM superadmin_user_plans WHERE rowid NOT IN (SELECT MIN(rowid) FROM superadmin_user_plans GROUP BY user_plan_id)`,
+      function (err) {
+        if (err) console.error("⚠️ superadmin_user_plans dedup:", err.message);
+        else if (this.changes > 0) console.log(`✅ Removed ${this.changes} duplicate superadmin_user_plans rows`);
+      }
+    );
+    db.run(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_plans_plan_id ON subscription_plans(plan_id)`,
+      (err) => {
+        if (err) console.error("⚠️ subscription_plans unique index:", err.message);
+        else console.log("✅ subscription_plans(plan_id) unique index ready");
+      }
+    );
+    db.run(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_sup_user_plan_id ON superadmin_user_plans(user_plan_id)`,
+      (err) => {
+        if (err) console.error("⚠️ superadmin_user_plans unique index:", err.message);
+        else console.log("✅ superadmin_user_plans(user_plan_id) unique index ready");
+      }
+    );
+  });
+}
 
 // ---------------- MIGRATE commission_settings TABLE ----------------
 // CommissionSettings.js (Common Setting page) needs its own table with

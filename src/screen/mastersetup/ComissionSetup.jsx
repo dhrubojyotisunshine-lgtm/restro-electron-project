@@ -81,7 +81,7 @@ const ComissionSetup = () => {
     axios
       .get(`${API_BASE_URL}/getcomissiondata`, {
         params: { searchItem: value },
-        Authorization: token,
+        headers: { Authorization: token },
       })
       .then((res) => {
         setCommissionData(res.data.data.length > 0 ? res.data.data : []);
@@ -158,7 +158,7 @@ const ComissionSetup = () => {
   };
   const DeleteCommission = (id) => {
     axios
-      .delete(`${API_BASE_URL}/deletecomission/${id}`)
+      .delete(`${API_BASE_URL}/deletecomission/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete Commission Sucessfully..");
@@ -181,7 +181,7 @@ const ComissionSetup = () => {
     setEditId(id);
     setIsModalOpen2(true);
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/comissionbyid/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/comissionbyid/${id}`, { headers: { Authorization: token } }).then((response) => {
       setFormData2({
         pos_id: response.data.data.pos_id,
         rate: response.data.data.rate,
@@ -199,7 +199,7 @@ const ComissionSetup = () => {
   const handleSubmit2 = (e) => {
     e.preventDefault();
     axios
-      .put(`${API_BASE_URL}/updatecomission/${editId}`, formData2)
+      .put(`${API_BASE_URL}/updatecomission/${editId}`, formData2, { headers: { Authorization: token } })
       .then(() => {
         toast.success("Updated Sucessfully!");
         getCommissionData();
@@ -527,7 +527,7 @@ const ComissionSetup = () => {
                       Previous
                     </button>
                     {[
-                      ...Array(Math.ceil(commissionData.length / itemsPerPage)),
+                      ...Array(Math.ceil((commissionData?.length || 0) / (itemsPerPage || 1))),
                     ].map((_, index) => (
                       <button
                         onClick={() => selectPage(index + 1)}

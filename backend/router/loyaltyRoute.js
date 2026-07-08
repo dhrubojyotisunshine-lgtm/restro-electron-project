@@ -11,9 +11,9 @@ router.post("/loyaltypoint",verifyToken, pointcontroller.createLoyaltyPoint);
 
 // Get all loyalty point settings or search by amount/earn_point
 router.get("/loyaltypoints",verifyToken, pointcontroller.getLoyaltyPoints);
-router.delete("/loyaltypoint/:id", pointcontroller.deleteLoyaltyPoint);
+router.delete("/loyaltypoint/:id", verifyToken, pointcontroller.deleteLoyaltyPoint);
 router.put("/loyaltypoint/:id",verifyToken, pointcontroller.updateLoyaltyPoint);
-router.get("/loyaltypoint/:id", pointcontroller.getLoyaltyPointById)
+router.get("/loyaltypoint/:id", verifyToken, pointcontroller.getLoyaltyPointById)
 // for the show customer point list
 router.get("/customerpoints",verifyToken, pointcontroller.getCustomerBillDetails);
 // for merger order

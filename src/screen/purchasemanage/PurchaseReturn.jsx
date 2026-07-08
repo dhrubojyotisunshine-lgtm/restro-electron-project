@@ -47,6 +47,7 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
     try {
       const response = await axios.get(`${API_BASE_URL}/purchasereturnsearch`, {
         params: { suplierID },
+        headers: { Authorization: token },
       });
       setInvoices(response.data.data); // Update invoices based on supplier
     } catch (error) {
@@ -67,9 +68,10 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
     try {
       const response = await axios.get(`${API_BASE_URL}/purchasereturn`, {
         params: {
-          supplierID: selectedSupplier, // Pass the selected supplier ID
-          invoiceID: selectedInvoice, // Pass the selected invoice ID
+          supplierID: selectedSupplier,
+          invoiceID: selectedInvoice,
         },
+        headers: { Authorization: token },
       });
       setReturnData(response.data.data.purchaseDetails);
       console.log("The result data is", response.data.data);

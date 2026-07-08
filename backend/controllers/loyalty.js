@@ -222,50 +222,91 @@ const getLoyaltyPoints = async (req, res) => {
   }
 };
 
-const deleteLoyaltyPoint = (req, res) => {
+const deleteLoyaltyPoint = async (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
 
-  const query = "DELETE FROM loyality_point_setting WHERE id = ?";
-  db.run(query, [id], (err, result) => {
-    if (err) {
-      console.error(err);
-      return res
-        .status(500)
-        .json({ success: false, message: "An error occurred" });
-    }
-
-    if (result.affectedRows === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Loyalty point setting not found" });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Loyalty point setting deleted successfully",
+  try {
+    const userData = await new Promise((resolve, reject) => {
+      db.get(`SELECT is_admin, created_by FROM user WHERE id = ?`, [userId], (err, row) => {
+        if (err) return reject(err);
+        resolve(row);
+      });
     });
-  });
+
+    if (!userData) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const allowedCreatorId = userData.is_admin ? userId : userData.created_by;
+
+    if (!allowedCreatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized to delete loyalty points." });
+    }
+
+    db.run(
+      "DELETE FROM loyality_point_setting WHERE id = ? AND created_by = ?",
+      [id, allowedCreatorId],
+      function (err) {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ success: false, message: "An error occurred" });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({ success: false, message: "Loyalty point setting not found" });
+        }
+
+        res.status(200).json({ success: true, message: "Loyalty point setting deleted successfully" });
+      }
+    );
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    return res.status(500).json({ success: false, message: "An unexpected error occurred" });
+  }
 };
-const getLoyaltyPointById = (req, res) => {
+const getLoyaltyPointById = async (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
 
-  const query = "SELECT * FROM loyality_point_setting WHERE id = ?";
-  db.all(query, [id], (err, results) => {
-    if (err) {
-      console.error(err);
-      return res
-        .status(500)
-        .json({ success: false, message: "An error occurred" });
+  try {
+    const userData = await new Promise((resolve, reject) => {
+      db.get(`SELECT is_admin, created_by FROM user WHERE id = ?`, [userId], (err, row) => {
+        if (err) return reject(err);
+        resolve(row);
+      });
+    });
+
+    if (!userData) {
+      return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    if (results.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Loyalty point setting not found" });
+    const allowedCreatorId = userData.is_admin ? userId : userData.created_by;
+
+    if (!allowedCreatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized to view this loyalty point." });
     }
 
-    res.status(200).json({ success: true, data: results[0] });
-  });
+    db.get(
+      "SELECT * FROM loyality_point_setting WHERE id = ? AND created_by = ?",
+      [id, allowedCreatorId],
+      (err, result) => {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ success: false, message: "An error occurred" });
+        }
+
+        if (!result) {
+          return res.status(404).json({ success: false, message: "Loyalty point setting not found" });
+        }
+
+        res.status(200).json({ success: true, data: result });
+      }
+    );
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    return res.status(500).json({ success: false, message: "An unexpected error occurred" });
+  }
 };
 
 const updateLoyaltyPoint = async (req, res) => {

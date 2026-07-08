@@ -163,6 +163,12 @@ function queryDb(query, params) {
   });
 }
 
+const resolveCreatorId = async (userId) => {
+  const [row] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
+  if (!row) return null;
+  return Number(row.is_admin) === 1 ? userId : row.created_by;
+};
+
 const getalldetailsProductiondetails = async (req, res) => {
   try {
     const { searchItem } = req.query;
@@ -558,18 +564,19 @@ const foodNameFetchApi = async (req, res) => {
 
 const foodWithVariant = async (req, res) => {
   const { foodid } = req.query;
-  console.log(foodid);
+  const userId = req.id;
 
-  // SQLite-compatible SQL query
   const sql = `
     SELECT v.variantname, i.ProductName, v.variantid
-    FROM variant v 
-    LEFT JOIN item_foods i ON i.ProductsID = v.menuid 
-    WHERE i.ProductsID = ?
+    FROM variant v
+    LEFT JOIN item_foods i ON i.ProductsID = v.menuid
+    WHERE i.ProductsID = ? AND i.created_by = ?
   `;
 
   try {
-    const result = await queryDb(sql, [foodid]);
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+    const result = await queryDb(sql, [foodid, creatorId]);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
     console.error("Error in foodWithVariant:", err);
@@ -862,55 +869,55 @@ const createProduction = async (req, res) => {
 
 // set production unit //
 
-const getPurchaseTransactions = (req, res) => {
+const getPurchaseTransactions = async (req, res) => {
   const { startDate, endDate, supplier_id } = req.query;
+  const userId = req.id;
 
-  // Base query
-  let query = `
-    SELECT 
-      p.suplierID, 
-      p.total_price AS credit, 
-      p.paid_amount AS debit, 
-      p.purchasedate AS purchase_date, 
-      p.details AS description,
-      s.amount AS ledger_amount,
-      s.d_c,
-      p.invoiceid
-    
-    FROM purchaseitem p
-    LEFT JOIN supplier_ledger s 
-      ON p.suplierID = s.supplier_id
-    WHERE 1 = 1
-  `;
+  try {
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-  const queryParams = [];
+    let query = `
+      SELECT
+        p.suplierID,
+        p.total_price AS credit,
+        p.paid_amount AS debit,
+        p.purchasedate AS purchase_date,
+        p.details AS description,
+        s.amount AS ledger_amount,
+        s.d_c,
+        p.invoiceid
+      FROM purchaseitem p
+      LEFT JOIN supplier_ledger s
+        ON p.suplierID = s.supplier_id
+      WHERE p.savedby = ?
+    `;
 
-  if (supplier_id) {
-    query += " AND p.suplierID = ?";
-    queryParams.push(supplier_id);
-  }
+    const queryParams = [creatorId];
 
-  if (startDate && endDate) {
-    query += " AND p.purchasedate BETWEEN ? AND ?";
-    queryParams.push(startDate, endDate);
-  }
+    if (supplier_id) {
+      query += " AND p.suplierID = ?";
+      queryParams.push(supplier_id);
+    }
 
-  // Use dbQuery for SQLite (assuming it's a wrapper for sqlite3 or better-sqlite3)
-  queryDb(query, queryParams)
-    .then((results) => {
-      res.status(200).json({
-        success: true,
-        data: results,
-        message: "Purchase transactions fetched successfully",
-      });
-    })
-    .catch((err) => {
-      console.error("Error fetching purchase transactions:", err);
-      res.status(500).json({
-        success: false,
-        message: "An error occurred while fetching purchase transactions",
-      });
+    if (startDate && endDate) {
+      query += " AND p.purchasedate BETWEEN ? AND ?";
+      queryParams.push(startDate, endDate);
+    }
+
+    const results = await queryDb(query, queryParams);
+    res.status(200).json({
+      success: true,
+      data: results,
+      message: "Purchase transactions fetched successfully",
     });
+  } catch (err) {
+    console.error("Error fetching purchase transactions:", err);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while fetching purchase transactions",
+    });
+  }
 };
 
 const getAllStockIngredients = async (req, res) => {
@@ -1018,19 +1025,20 @@ const getAllStockIngredientswithone = async (req, res) => {
 
 const getPerItemPrice = async (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
 
-  // SQL query to get the total quantity and total price for a specific ingredient
   const query = `
-    SELECT SUM(quantity) AS totalquantity, 
-           SUM(totalprice) AS totalprice 
-    FROM purchase_details 
-    WHERE indredientid = ? 
+    SELECT SUM(quantity) AS totalquantity,
+           SUM(totalprice) AS totalprice
+    FROM purchase_details
+    WHERE indredientid = ? AND purchaseby = ?
     GROUP BY indredientid
   `;
 
   try {
-    // Use the dbQuery helper function to execute the query
-    const result = await queryDb(query, [id]);
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+    const result = await queryDb(query, [id, creatorId]);
 
     // Check if the ingredient exists
     if (result.length === 0) {
@@ -1178,16 +1186,19 @@ const createproductiondata = async (req, res) => {
 
 const findbyIdProductiondetails = async (req, res) => {
   const { foodid, pvarientid } = req.params;
+  const userId = req.id;
 
   try {
-    // Query to fetch production details
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
     const sql = `
       SELECT p.foodid, p.pvarientid, p.ingredientid, p.qty AS productionqty
       FROM production_details p
-      WHERE p.foodid = ? AND p.pvarientid = ?
+      WHERE p.foodid = ? AND p.pvarientid = ? AND p.createdby = ?
     `;
 
-    const productionDetails = await queryDb(sql, [foodid, pvarientid]);
+    const productionDetails = await queryDb(sql, [foodid, pvarientid, creatorId]);
 
     if (!productionDetails || productionDetails.length === 0) {
       return res.status(404).send({ message: "No production details found" });
@@ -1277,16 +1288,19 @@ const findbyIdProductiondetails = async (req, res) => {
 
 const viewProductiondetails = async (req, res) => {
   const { foodid, pvarientid } = req.params;
+  const userId = req.id;
 
   try {
-    // Query to fetch production details
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
     const sql = `
         SELECT p.foodid, p.pvarientid, p.ingredientid, p.qty AS productionqty
         FROM production_details p
-        WHERE p.foodid = ? AND p.pvarientid = ?
+        WHERE p.foodid = ? AND p.pvarientid = ? AND p.createdby = ?
       `;
 
-    const productionDetails = await queryDb(sql, [foodid, pvarientid]);
+    const productionDetails = await queryDb(sql, [foodid, pvarientid, creatorId]);
 
     if (!productionDetails || productionDetails.length === 0) {
       return res.status(404).send({ message: "No production details found" });
@@ -1455,17 +1469,20 @@ const viewProductiondetails = async (req, res) => {
 const deleteProductionData = async (req, res) => {
   try {
     const { foodid, pvarientid } = req.params;
+    const userId = req.id;
 
     if (!foodid || !pvarientid) {
       return res.status(400).json({ message: "Missing foodid or pvarientid" });
     }
 
-    // Check if production records exist
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ message: "Unauthorized" });
+
     const checkQuery = `
       SELECT * FROM production_details
-      WHERE foodid = ? AND pvarientid = ?
+      WHERE foodid = ? AND pvarientid = ? AND createdby = ?
     `;
-    const existingRecords = await queryDb(checkQuery, [foodid, pvarientid]);
+    const existingRecords = await queryDb(checkQuery, [foodid, pvarientid, creatorId]);
 
     if (existingRecords.length === 0) {
       return res.status(404).json({
@@ -1473,12 +1490,11 @@ const deleteProductionData = async (req, res) => {
       });
     }
 
-    // Delete matching records
     const deleteQuery = `
       DELETE FROM production_details
-      WHERE foodid = ? AND pvarientid = ?
+      WHERE foodid = ? AND pvarientid = ? AND createdby = ?
     `;
-    await queryDb(deleteQuery, [foodid, pvarientid]);
+    await queryDb(deleteQuery, [foodid, pvarientid, creatorId]);
 
     return res
       .status(200)

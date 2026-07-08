@@ -327,10 +327,17 @@ const putCashRegisterDetail = async (req, res) => {
   try {
     const { id } = req.params;
     const { closedate, closing_note, closing_balance } = req.body;
+    const userId = req.id;
 
-    console.log(closedate, closing_note, closing_balance);
+    const creatorId = await new Promise((resolve, reject) => {
+      db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+        if (err) return reject(err);
+        if (!row) return resolve(null);
+        resolve(Number(row.is_admin) === 1 ? userId : row.created_by);
+      });
+    });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-    // Validate required fields
     if (!closedate || !closing_note || closing_balance === undefined) {
       return res.status(400).json({
         success: false,
@@ -338,19 +345,18 @@ const putCashRegisterDetail = async (req, res) => {
       });
     }
 
-    // SQL Update Query
     const query = `
-        UPDATE tbl_cashregister 
+        UPDATE tbl_cashregister
         SET closing_note = ?, closedate = ?, closing_balance = ?
-        WHERE id = ?
+        WHERE id = ? AND created_by = ?
       `;
 
-    // Execute update query
     const result = await dbRun(query, [
       closing_note,
       closedate,
       closing_balance,
       id,
+      creatorId,
     ]);
 
     // Check if any rows were updated

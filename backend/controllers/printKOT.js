@@ -1238,10 +1238,9 @@ const getKitchenKotList = async (req, res) => {
       FROM kot_items k
       JOIN customer_order co ON k.order_id = co.order_id
       LEFT JOIN rest_table rt ON co.table_no = rt.tableid
-      WHERE 
+      WHERE
         k.printed = 1
-        AND k.status NOT IN ('completed','rejected')
-        AND k.status <> ''
+        AND COALESCE(k.status, '') NOT IN ('completed','rejected')
       ORDER BY k.order_id DESC
     `;
 

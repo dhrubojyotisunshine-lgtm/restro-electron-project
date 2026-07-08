@@ -7,8 +7,8 @@ const cashregisterController = require("../controllers/cashRegister");
 const verifyToken = require("../middleware/authicantejwt");
 
 router.post("/cashregister",auth,verifyToken, cashregisterController.addCashRegisterDetail);
-router.get("/closeregister/:id",cashregisterController.getCashRegisterDetail);
-router.put('/cashregisters/:id',cashregisterController.putCashRegisterDetail);
+router.get("/closeregister/:id", verifyToken, cashregisterController.getCashRegisterDetail);
+router.put('/cashregisters/:id', verifyToken, cashregisterController.putCashRegisterDetail);
 // recent transaction
 router.get("/transaction",auth,verifyToken,cashregisterController.recenttransaction);
 

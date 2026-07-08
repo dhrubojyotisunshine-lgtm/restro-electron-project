@@ -248,64 +248,46 @@ const updateFloor = async (req, res) => {
   try {
     const { id } = req.params;
     const { floorName } = req.body;
+    const userId = req.id;
 
-    // Step 1: Fetch the current floor data
-    const fetchCurrentDataSql =
-      "SELECT rowid AS tbfloorid, * FROM tbl_tablefloor WHERE rowid = ?";
-    db.get(fetchCurrentDataSql, [id], (fetchErr, currentData) => {
+    const userRow = await new Promise((resolve, reject) => {
+      db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+        if (err) reject(err); else resolve(row);
+      });
+    });
+    if (!userRow) return res.status(404).json({ success: false, message: "User not found" });
+    const creatorId = Number(userRow.is_admin) === 1 ? userId : userRow.created_by;
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
+
+    db.get("SELECT rowid AS tbfloorid, * FROM tbl_tablefloor WHERE rowid = ? AND created_by = ?", [id, creatorId], (fetchErr, currentData) => {
       if (fetchErr) {
         console.error("Database fetch error:", fetchErr);
-        return res
-          .status(500)
-          .json({ success: false, message: "Internal Server Error" });
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
       }
-
       if (!currentData) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Floor record not found" });
+        return res.status(404).json({ success: false, message: "Floor record not found" });
       }
 
-      // Step 2: Prepare the updated data
-      const updatedData = {
-        floorName: floorName !== undefined ? floorName : currentData.floorName,
-      };
-
-      // Step 3: Update the floor record
-      const updateFloorQuery = `
-        UPDATE tbl_tablefloor
-        SET floorName = ?
-        WHERE rowid = ?
-      `;
+      const updatedFloorName = floorName !== undefined ? floorName : currentData.floorName;
 
       db.run(
-        updateFloorQuery,
-        [updatedData.floorName, id],
+        "UPDATE tbl_tablefloor SET floorName = ? WHERE rowid = ? AND created_by = ?",
+        [updatedFloorName, id, creatorId],
         function (updateErr) {
           if (updateErr) {
             console.error("Database update error:", updateErr);
-            return res
-              .status(500)
-              .json({ success: false, message: "An error occurred" });
+            return res.status(500).json({ success: false, message: "An error occurred" });
           }
-
           if (this.changes === 0) {
-            return res
-              .status(404)
-              .json({ success: false, message: "Floor record not found" });
+            return res.status(404).json({ success: false, message: "Floor record not found" });
           }
-
-          return res
-            .status(200)
-            .json({ success: true, message: "Floor updated successfully" });
+          return res.status(200).json({ success: true, message: "Floor updated successfully" });
         },
       );
     });
   } catch (error) {
     console.error("Update floor error:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "An unexpected error occurred" });
+    return res.status(500).json({ success: false, message: "An unexpected error occurred" });
   }
 };
 
@@ -313,34 +295,30 @@ const updateFloor = async (req, res) => {
 const getFloorById = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.id;
 
     if (!id) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Floor ID is required" });
+      return res.status(400).json({ success: false, message: "Floor ID is required" });
     }
 
-    const getFloorByIdQuery = `SELECT rowid AS tbfloorid, * FROM tbl_tablefloor WHERE rowid = ?`;
+    const userRow = await new Promise((resolve, reject) => {
+      db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+        if (err) reject(err); else resolve(row);
+      });
+    });
+    if (!userRow) return res.status(404).json({ success: false, message: "User not found" });
+    const creatorId = Number(userRow.is_admin) === 1 ? userId : userRow.created_by;
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
 
-    db.all(getFloorByIdQuery, [id], (err, result) => {
+    db.get("SELECT rowid AS tbfloorid, * FROM tbl_tablefloor WHERE rowid = ? AND created_by = ?", [id, creatorId], (err, result) => {
       if (err) {
         console.log(err);
-        return res
-          .status(500)
-          .json({ success: false, message: "An error occurred" });
+        return res.status(500).json({ success: false, message: "An error occurred" });
       }
-
-      if (result.length === 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Floor not found" });
+      if (!result) {
+        return res.status(404).json({ success: false, message: "Floor not found" });
       }
-
-      res.status(200).json({
-        success: true,
-        data: result[0],
-        message: "Floor fetched successfully",
-      });
+      res.status(200).json({ success: true, data: result, message: "Floor fetched successfully" });
     });
   } catch (error) {
     console.error(error);
@@ -351,32 +329,30 @@ const getFloorById = async (req, res) => {
 const deleteFloor = async (req, res) => {
   try {
     const { floorID } = req.params;
+    const userId = req.id;
 
-    const deleteFloorQuery = `DELETE FROM tbl_tablefloor WHERE rowid = ?`;
-    db.run(deleteFloorQuery, [floorID], function (err) {
+    const userRow = await new Promise((resolve, reject) => {
+      db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+        if (err) reject(err); else resolve(row);
+      });
+    });
+    if (!userRow) return res.status(404).json({ success: false, message: "User not found" });
+    const creatorId = Number(userRow.is_admin) === 1 ? userId : userRow.created_by;
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
+
+    db.run("DELETE FROM tbl_tablefloor WHERE rowid = ? AND created_by = ?", [floorID, creatorId], function (err) {
       if (err) {
         console.log("Error deleting floor:", err);
-        return res.status(500).json({
-          success: false,
-          message: "An error occurred while deleting the floor",
-        });
+        return res.status(500).json({ success: false, message: "An error occurred while deleting the floor" });
       }
-
       if (this.changes === 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Floor not found" });
+        return res.status(404).json({ success: false, message: "Floor not found" });
       }
-
-      return res
-        .status(200)
-        .json({ success: true, message: "Floor deleted successfully" });
+      return res.status(200).json({ success: true, message: "Floor deleted successfully" });
     });
   } catch (error) {
     console.error("Unexpected error:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "An unexpected error occurred" });
+    return res.status(500).json({ success: false, message: "An unexpected error occurred" });
   }
 };
 

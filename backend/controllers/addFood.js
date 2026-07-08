@@ -473,11 +473,23 @@ const getAllItemFoodDetails = async (req, res) => {
 
 const deleteItemFood = (req, res) => {
   const ProductsID = req.params.ProductsID;
+  const userId = req.id;
 
-  // First fetch the ProductImage filename from item_foods
-  const sqlFetchImage = `SELECT ProductImage FROM item_foods WHERE ProductsID = ?`;
+  db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (userErr, userData) => {
+    if (userErr) return res.status(500).json({ error: "Internal Server Error" });
+    if (!userData) return res.status(404).json({ error: "User not found" });
+    const creatorId = Number(userData.is_admin) === 1 ? userId : userData.created_by;
+    if (!creatorId) return res.status(403).json({ error: "You are not authorized" });
 
-  db.get(sqlFetchImage, [ProductsID], (err, row) => {
+    doDeleteItemFood(ProductsID, creatorId, res);
+  });
+};
+
+const doDeleteItemFood = (ProductsID, creatorId, res) => {
+  // First fetch the ProductImage filename from item_foods (scoped to owner)
+  const sqlFetchImage = `SELECT ProductImage FROM item_foods WHERE ProductsID = ? AND UserIDInserted = ?`;
+
+  db.get(sqlFetchImage, [ProductsID, creatorId], (err, row) => {
     if (err) {
       console.error("Error fetching ProductImage:", err);
       return res
@@ -493,9 +505,9 @@ const deleteItemFood = (req, res) => {
     const imageFilename = row.ProductImage;
 
     // Delete the product from the database
-    const sqlDeleteItemFood = `DELETE FROM item_foods WHERE ProductsID = ?`;
+    const sqlDeleteItemFood = `DELETE FROM item_foods WHERE ProductsID = ? AND UserIDInserted = ?`;
 
-    db.run(sqlDeleteItemFood, [ProductsID], function (err) {
+    db.run(sqlDeleteItemFood, [ProductsID, creatorId], function (err) {
       if (err) {
         console.error("Error deleting item_food:", err);
         return res
@@ -624,10 +636,21 @@ const deleteItemFood = (req, res) => {
 
 // update Food
 const getItemFoodDetails = (req, res) => {
-  const ProductsID = req.params.id; // Fix parameter name
-  console.log(ProductsID, "sdjsdj");
+  const ProductsID = req.params.id;
+  const userId = req.id;
 
-  // Query to fetch product details
+  db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (userErr, userData) => {
+    if (userErr) return res.status(500).json({ error: "Internal Server Error" });
+    if (!userData) return res.status(404).json({ error: "User not found" });
+    const creatorId = Number(userData.is_admin) === 1 ? userId : userData.created_by;
+    if (!creatorId) return res.status(403).json({ error: "You are not authorized" });
+
+    doGetItemFoodDetails(ProductsID, creatorId, res);
+  });
+};
+
+const doGetItemFoodDetails = (ProductsID, creatorId, res) => {
+  // Query to fetch product details (scoped to owner)
   const productDetailsQuery = `
     SELECT
       item_foods.*,
@@ -640,7 +663,7 @@ const getItemFoodDetails = (req, res) => {
     LEFT JOIN tbl_kitchen ON item_foods.kitchenid = tbl_kitchen.kitchenid
     LEFT JOIN tbl_menutype ON item_foods.menutype = tbl_menutype.menutypeid
     WHERE
-      item_foods.ProductsIsActive = 1 AND item_foods.ProductsID = ?;
+      item_foods.ProductsIsActive = 1 AND item_foods.ProductsID = ? AND item_foods.UserIDInserted = ?;
   `;
 
   // Query to fetch add-ons data
@@ -669,7 +692,7 @@ const getItemFoodDetails = (req, res) => {
   // Execute all queries concurrently
   Promise.all([
     new Promise((resolve, reject) => {
-      db.get(productDetailsQuery, [ProductsID], (err, result) => {
+      db.get(productDetailsQuery, [ProductsID, creatorId], (err, result) => {
         if (err) return reject(err);
         resolve(result || null); // Ensure null if no data is found
       });
@@ -1138,80 +1161,86 @@ const updateItemFood = (req, res) => {
   // Convert kitchenid to number if needed
   const kitchenIdNum = parseInt(kitchenid) || 0;
 
-  // Fetch existing product to use default values if any field is missing
-  db.get(
-    `SELECT * FROM item_foods WHERE ProductsID = ?`,
-    [ProductsID],
-    (err, existingItem) => {
-      if (err) {
-        console.error("Error fetching product:", err);
-        return res.status(500).json({ error: "Internal Server Error" });
-      }
+  // Resolve owner for scoping
+  db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [UserIDUpdated], (userErr, userData) => {
+    if (userErr) return res.status(500).json({ error: "Internal Server Error" });
+    if (!userData) return res.status(404).json({ error: "User not found" });
+    const creatorId = Number(userData.is_admin) === 1 ? UserIDUpdated : userData.created_by;
+    if (!creatorId) return res.status(403).json({ error: "You are not authorized" });
 
-      if (!existingItem) {
-        return res.status(404).json({ error: "Product not found" });
-      }
+    // Fetch existing product to use default values if any field is missing
+    db.get(
+      `SELECT * FROM item_foods WHERE ProductsID = ? AND UserIDInserted = ?`,
+      [ProductsID, creatorId],
+      (err, existingItem) => {
+        if (err) {
+          console.error("Error fetching product:", err);
+          return res.status(500).json({ error: "Internal Server Error" });
+        }
 
-      const updatedCategoryID = CategoryID ?? existingItem.CategoryID;
-      const updatedKitchenid = kitchenIdNum || existingItem.kitchenid;
-      const updatedProductName = ProductName ?? existingItem.ProductName;
-      const updatedDescrp = descrp ?? existingItem.descrip;
-      const updatedProductImage = ProductImage ?? existingItem.ProductImage;
-      const updatedProductvat = productvat ?? existingItem.productvat;
-      const updatedSpecial =
-        special !== undefined ? specialint : existingItem.special;
-      const updatedIsOffer =
-        isoffer !== undefined ? isofferint : existingItem.offerIsavailable;
-      // const updatedOfferStartDate =
-      //   offerstartdate ?? existingItem.offerstartdate;
+        if (!existingItem) {
+          return res.status(404).json({ error: "Product not found" });
+        }
+
+        const updatedCategoryID = CategoryID ?? existingItem.CategoryID;
+        const updatedKitchenid = kitchenIdNum || existingItem.kitchenid;
+        const updatedProductName = ProductName ?? existingItem.ProductName;
+        const updatedDescrp = descrp ?? existingItem.descrip;
+        const updatedProductImage = ProductImage ?? existingItem.ProductImage;
+        const updatedProductvat = productvat ?? existingItem.productvat;
+        const updatedSpecial =
+          special !== undefined ? specialint : existingItem.special;
+        const updatedIsOffer =
+          isoffer !== undefined ? isofferint : existingItem.offerIsavailable;
         const updatedOfferStartDate =
-  offerstartdate !== undefined
-    ? (offerstartdate || null)
-    : (existingItem.offerstartdate || null);
+          offerstartdate !== undefined
+            ? (offerstartdate || null)
+            : (existingItem.offerstartdate || null);
 
-      const updatedOfferEndDate = offerenddate ?? existingItem.offerendate;
-      const updatedIsCustomQuantity =
-        is_custom_quantity !== undefined
-          ? is_custom_quantityint
-          : existingItem.is_customqty;
-      const updatedStatus = status ?? existingItem.ProductsIsActive;
-      const updatedMenuid = menuid ?? existingItem.menutype;
+        const updatedOfferEndDate = offerenddate ?? existingItem.offerendate;
+        const updatedIsCustomQuantity =
+          is_custom_quantity !== undefined
+            ? is_custom_quantityint
+            : existingItem.is_customqty;
+        const updatedStatus = status ?? existingItem.ProductsIsActive;
+        const updatedMenuid = menuid ?? existingItem.menutype;
 
-      // Update item_foods
-      db.run(
-        `UPDATE item_foods SET 
-          CategoryID = ?, 
-          UserIDUpdated = ?, 
-          kitchenid = ?, 
-          ProductName = ?, 
-          descrip = ?, 
-          ProductImage = ?, 
-          productvat = ?, 
-          special = ?, 
-          offerIsavailable = ?, 
-          offerstartdate = ?, 
-          offerendate = ?, 
-          is_customqty = ?, 
-          ProductsIsActive = ?, 
-          menutype = ?
-        WHERE ProductsID = ?`,
-        [
-          updatedCategoryID,
-          UserIDUpdated,
-          updatedKitchenid,
-          updatedProductName,
-          updatedDescrp,
-          updatedProductImage,
-          updatedProductvat,
-          updatedSpecial,
-          updatedIsOffer,
-          updatedOfferStartDate,
-          updatedOfferEndDate,
-          updatedIsCustomQuantity,
-          updatedStatus,
-          updatedMenuid,
-          ProductsID,
-        ],
+        // Update item_foods
+        db.run(
+          `UPDATE item_foods SET
+            CategoryID = ?,
+            UserIDUpdated = ?,
+            kitchenid = ?,
+            ProductName = ?,
+            descrip = ?,
+            ProductImage = ?,
+            productvat = ?,
+            special = ?,
+            offerIsavailable = ?,
+            offerstartdate = ?,
+            offerendate = ?,
+            is_customqty = ?,
+            ProductsIsActive = ?,
+            menutype = ?
+          WHERE ProductsID = ? AND UserIDInserted = ?`,
+          [
+            updatedCategoryID,
+            UserIDUpdated,
+            updatedKitchenid,
+            updatedProductName,
+            updatedDescrp,
+            updatedProductImage,
+            updatedProductvat,
+            updatedSpecial,
+            updatedIsOffer,
+            updatedOfferStartDate,
+            updatedOfferEndDate,
+            updatedIsCustomQuantity,
+            updatedStatus,
+            updatedMenuid,
+            ProductsID,
+            creatorId,
+          ],
         function (err) {
           if (err) {
             console.error("Error updating product:", err);
@@ -1291,6 +1320,7 @@ const updateItemFood = (req, res) => {
       );
     },
   );
+  });
 };
 
 const bulkUploadFood = (req, res) => {

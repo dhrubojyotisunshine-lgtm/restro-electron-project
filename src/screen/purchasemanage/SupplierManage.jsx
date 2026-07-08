@@ -187,7 +187,7 @@ const [errors, setErrors] = useState({
   };
   const DeleteUnit = (id) => {
     axios
-      .delete(`${API_BASE_URL}/suppliers/${id}`)
+      .delete(`${API_BASE_URL}/suppliers/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete supplier sucessfully..");
@@ -220,7 +220,7 @@ const [errors, setErrors] = useState({
     supAddress: "",
   });
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/suppliers/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/suppliers/${id}`, { headers: { Authorization: token } }).then((response) => {
       setFormData2({
         supName: response.data.data.supName,
         supEmail: response.data.data.supEmail,
@@ -313,7 +313,7 @@ const validateForm = () => {
   }
 
   axios
-    .put(`${API_BASE_URL}/suppliers/${editId}`, formData2)
+    .put(`${API_BASE_URL}/suppliers/${editId}`, formData2, { headers: { Authorization: token } })
     .then(() => {
       toast.success("Supplier updated successfully!");
       getSupplierData();

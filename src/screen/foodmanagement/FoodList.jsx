@@ -258,7 +258,7 @@ const AddFood = () => {
 
   const deletemenu = (ProductsID) => {
     axios
-      .delete(`${API_BASE_URL}/itemfood/${ProductsID}`)
+      .delete(`${API_BASE_URL}/itemfood/${ProductsID}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log(res.data);
         getCategoryData();
@@ -279,7 +279,7 @@ const AddFood = () => {
   //   handle edit modal of food
   const handleEditButtonClick = async (ProductID) => {
     axios
-      .get(`${API_BASE_URL}/itemfooddetail/${ProductID}`)
+      .get(`${API_BASE_URL}/itemfooddetail/${ProductID}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Fetched data:", res.data); // Log fetched data for debugging
 
@@ -642,7 +642,7 @@ const AddFood = () => {
         `${API_BASE_URL}/bulk-upload-food`,
         formData,
         {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: { "Content-Type": "multipart/form-data", Authorization: token },
         },
       );
 

@@ -22,6 +22,12 @@ const dbQuery = (query, values) => {
   });
 };
 
+const resolveCreatorId = async (userId) => {
+  const [row] = await dbQuery("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
+  if (!row) return null;
+  return Number(row.is_admin) === 1 ? userId : row.created_by;
+};
+
 const addUser = async (req, res) => {
   try {
     const loggedInUserId = req.id;
@@ -282,9 +288,14 @@ const getUsers = async (req, res) => {
 
 const deleteUser = async (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
 
-  const sqlFetchImage = `SELECT image FROM user WHERE id = ?`;
-  db.get(sqlFetchImage, [id], (err, result) => {
+  try {
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ error: "Unauthorized" });
+
+    const sqlFetchImage = `SELECT image FROM user WHERE id = ? AND created_by = ?`;
+    db.get(sqlFetchImage, [id, creatorId], (err, result) => {
     if (err) {
       console.error("Error fetching image:", err);
       return res
@@ -298,8 +309,8 @@ const deleteUser = async (req, res) => {
 
     const imageFilename = result.image;
 
-    const sqlDeleteUser = `DELETE FROM user WHERE id = ?`;
-    db.run(sqlDeleteUser, [id], function (err) {
+    const sqlDeleteUser = `DELETE FROM user WHERE id = ? AND created_by = ?`;
+    db.run(sqlDeleteUser, [id, creatorId], function (err) {
       if (err) {
         console.error("Error deleting user:", err);
         return res
@@ -333,15 +344,22 @@ const deleteUser = async (req, res) => {
       }
     });
   });
+  } catch (err) {
+    console.error("Error in deleteUser:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
 };
 
 const getUserById = async (req, res) => {
   try {
-    const id = req.params.id; // Get user ID from the URL parameters
+    const id = req.params.id;
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ error: "Unauthorized" });
 
-    const getUserQuery = "SELECT * FROM user WHERE id = ?";
+    const getUserQuery = "SELECT * FROM user WHERE id = ? AND created_by = ?";
 
-    db.get(getUserQuery, [id], (err, result) => {
+    db.get(getUserQuery, [id, creatorId], (err, result) => {
       if (err) {
         return res
           .status(500)
@@ -502,9 +520,8 @@ const syncActivationData = async (req, res) => {
         trial_date,
         package_status,
         created_by,
-        created_at,
-        subscription_key
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.run(subscriptionQuery, [
@@ -519,7 +536,6 @@ const syncActivationData = async (req, res) => {
       subscription.package_status,
       subscription.created_by,
       subscription.created_at,
-      subscription.subscription_key,
     ]);
 
     const planQuery = `
@@ -903,14 +919,18 @@ const updateUser = async (req, res) => {
   const { id } = req.params;
   const { firstname, lastname, about, email, password, status, is_admin } =
     req.body;
-  console.log(req.body);
+  const userId = req.id;
 
   if (!password) {
     return res.status(400).send({ error: "Password is Mandatory" });
   }
 
-  const fetchCurrentDataSql = "SELECT * FROM user WHERE id = ?";
-  db.get(fetchCurrentDataSql, [id], async (fetchErr, currentData) => {
+  try {
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ error: "Unauthorized" });
+
+    const fetchCurrentDataSql = "SELECT * FROM user WHERE id = ? AND created_by = ?";
+    db.get(fetchCurrentDataSql, [id, creatorId], async (fetchErr, currentData) => {
     if (fetchErr) {
       console.error("Database fetch error: ", fetchErr);
       return res.status(500).json({ error: "Internal Server Error" });
@@ -969,6 +989,10 @@ const updateUser = async (req, res) => {
       return res.json({ message: "User data updated successfully" });
     });
   });
+  } catch (err) {
+    console.error("Error in updateUser:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
 };
 
 const STATIC_COUNTRIES = [
@@ -1241,10 +1265,13 @@ const getCitiesByState = async (req, res) => {
 
 const checkIncheckOut = async (req, res) => {
   try {
-    // ✅ SQLite uses `||` instead of CONCAT()
-    const query = `SELECT id, firstname || ' ' || lastname AS username, last_login, last_logout FROM user`;
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ message: "Unauthorized", success: false });
 
-    const result = await dbQuery(query);
+    const query = `SELECT id, firstname || ' ' || lastname AS username, last_login, last_logout FROM user WHERE created_by = ?`;
+
+    const result = await dbQuery(query, [creatorId]);
 
     if (result.length === 0) {
       return res.status(404).json({ message: "No data found" });

@@ -90,6 +90,7 @@ import ResetPassword from "./screen/ResetPassword";
 import ForgetPassword from "./screen/ForgetPassword";
 import EditOrder from "./screen/posscreen/EditOrder";
 import Common_Setting from "./screen/websetting/Common_Setting";
+import MySubscription from "./screen/websetting/MySubscription";
 import Cash_Register from "./screen/posscreen/Cash_Register";
 import DeleverySaleReport from "./screen/report/DeleverySaleReport";
 import QrOrder_Page from "./screen/qrorders/QrOrder_Page";
@@ -871,6 +872,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <SoundSetting />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-subscription"
+            element={
+              <ProtectedRoute>
+                <MySubscription />
               </ProtectedRoute>
             }
           />

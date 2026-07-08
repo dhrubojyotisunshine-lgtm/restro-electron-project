@@ -193,6 +193,7 @@ const MakingFoodwaste = () => {
             foodid: selectedFood,
             pvarientid: variantid,
           },
+          headers: { Authorization: token },
         });
 
         const price = response.data.data[0].totalAmount;

@@ -1,15 +1,13 @@
 const db = require("../utils/db");
 
-const dbQuery = (query, values) => {
-  return new Promise((resolve, reject) => {
-    db.pool.query(query, values, (err, result) => {
-      if (err) {
-        return reject(err);
-      }
-      resolve(result);
+const resolveCreatorId = (userId) =>
+  new Promise((resolve, reject) => {
+    db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+      if (err) return reject(err);
+      if (!row) return resolve(null);
+      resolve(Number(row.is_admin) === 1 ? userId : row.created_by);
     });
   });
-};
 
 const showsplitorder = async (req, res) => {
   try {
@@ -19,15 +17,18 @@ const showsplitorder = async (req, res) => {
       return res.status(400).json({ message: "Order ID is required" });
     }
 
-    // ORDER DETAILS
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ message: "Unauthorized" });
+
     const orderQuery = `
       SELECT co.*, b.*
       FROM customer_order co
       LEFT JOIN bill b ON b.order_id = co.order_id
-      WHERE co.order_id = ?
+      WHERE co.order_id = ? AND co.created_by = ?
     `;
 
-    db.get(orderQuery, [orderId], (err, orderResult) => {
+    db.get(orderQuery, [orderId, creatorId], (err, orderResult) => {
       if (err) return res.status(500).json({ message: "Error fetching order" });
 
       if (!orderResult) {
@@ -107,26 +108,25 @@ const showsplitorder = async (req, res) => {
   }
 };
 
-const mergeMakePayment = (req, res) => {
+const mergeMakePayment = async (req, res) => {
   const orderIds = req.body.orderid;
 
-  // Validate order IDs
   if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
     return res.status(400).json({ message: "Invalid order IDs" });
   }
 
-  console.log("Order IDs:", orderIds);
-
   const allOrder = orderIds.join(",");
   const { payment_method_id, paidAmount, discount } = req.body;
 
-  console.log("Request Body:", req.body);
+  try {
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-  // SQLite - Use placeholders for dynamic number of IDs
-  const placeholders = orderIds.map(() => "?").join(", ");
-  const checkOrderQuery = `SELECT * FROM customer_order WHERE order_id IN (${placeholders})`;
+    const placeholders = orderIds.map(() => "?").join(", ");
+    const checkOrderQuery = `SELECT * FROM customer_order WHERE order_id IN (${placeholders}) AND created_by = ?`;
 
-  db.all(checkOrderQuery, orderIds, (err, orderResult) => {
+    db.all(checkOrderQuery, [...orderIds, creatorId], (err, orderResult) => {
     if (err) {
       console.error("Error checking customer_order:", err);
       return res
@@ -236,6 +236,10 @@ const mergeMakePayment = (req, res) => {
       },
     );
   });
+  } catch (err) {
+    console.error("Error in mergeMakePayment:", err);
+    res.status(500).json({ success: false, message: "An error occurred" });
+  }
 };
 
 const paymentSplitOrder = async (req, res) => {

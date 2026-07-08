@@ -15,7 +15,8 @@ const PaymentDialogBox = ({
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const APP_URL = import.meta.env.VITE_APP_URL;
   const VITE_IMG_URL= import.meta.env.VITE_IMG_URL
-  const [selectedMethod, setSelectedMethod] = useState(1);
+  const token = localStorage.getItem("token");
+  const [selectedMethod, setSelectedMethod] = useState(() => paymentMethod?.[0]?.payment_method_id || 1);
   const [paidAmount, setPaidAmount] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState("percent"); // or "amount"
@@ -69,7 +70,7 @@ const PaymentDialogBox = ({
   // get all booked table
   const getBookTable = () => {
     axios
-      .get(`${API_BASE_URL}/bookedtable`)
+      .get(`${API_BASE_URL}/bookedtable`, { headers: { Authorization: token } })
       .then((res) => {
       })
       .catch((error) => {
@@ -87,7 +88,7 @@ const PaymentDialogBox = ({
     };
   
     axios
-      .post(`${API_BASE_URL}/makePayment/${order_id}`, formData)
+      .post(`${API_BASE_URL}/makePayment/${order_id}`, formData, { headers: { Authorization: token } })
       .then((response) => {
         console.log(response.data);
         toast.success("Payment Complete");
@@ -124,7 +125,7 @@ const PaymentDialogBox = ({
         </select>
 
         {/* Payment Info */}
-        {(selectedMethod === 9 || selectedMethod === 4) && (
+        {!paymentMethod.find(m => Number(m.payment_method_id) === Number(selectedMethod))?.payment_method?.toLowerCase().includes('cash') && (
           <div className="mt-4 p-4 bg-gray-50 rounded-lg">
             <h2 className="text-sm font-semibold mb-2">Payment Information</h2>
             <div className="grid grid-cols-2 gap-2 text-sm">

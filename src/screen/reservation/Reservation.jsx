@@ -151,7 +151,7 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
   };
   const DeleteUnit = (id) => {
     axios
-      .delete(`${API_BASE_URL}/reservation/${id}`)
+      .delete(`${API_BASE_URL}/reservation/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("delete sucessfully..");
@@ -182,7 +182,7 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
 
     // Fetch data for the given ID
     axios
-      .get(`${API_BASE_URL}/reservation/${id}`)
+      .get(`${API_BASE_URL}/reservation/${id}`, { headers: { Authorization: token } })
       .then((response) => {
 
         const data = response.data.data; // Assuming the data structure you shared
@@ -224,7 +224,7 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
   }
     console.log(formData2)
     axios
-      .put(`${API_BASE_URL}/reservationbook/${editId}`, formData2)
+      .put(`${API_BASE_URL}/reservationbook/${editId}`, formData2, { headers: { Authorization: token } })
       .then(() => {
         toast.success("Customer details updated successfully!");
         getReservationData(); // Refresh reservation data if needed
@@ -244,7 +244,7 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
 
   const fetchData = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/reservation`);
+      const response = await axios.get(`${API_BASE_URL}/reservation`, { headers: { Authorization: token } });
       return response.data.data; // Assuming the data you need is in `response.data.data`
     } catch (error) {
       console.error("Error fetching data:", error);

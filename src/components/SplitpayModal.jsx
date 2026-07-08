@@ -15,6 +15,7 @@ const SplitpayModal = ({
     if (!isOpen) return null;
     if (!isOpen) return null;
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+      const token = localStorage.getItem("token");
       const [selectedMethod, setSelectedMethod] = useState([1]);
       const [paidAmount, setPaidAmount] = useState(0);
       const [discount, setDiscount] = useState(0);
@@ -93,7 +94,7 @@ const total = orderDetails.reduce((acc, item) => {
     console.log(formData)
 
     axios
-      .post(`${API_BASE_URL}/paysplit`, formData)
+      .post(`${API_BASE_URL}/paysplit`, formData, { headers: { Authorization: token } })
       .then((response) => {
         console.log("split pay response",response.data);
         refreshOrderList()

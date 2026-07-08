@@ -162,7 +162,7 @@ const CategoryList = () => {
     setEditId(id);
     setEditModal(true);
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/data/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/data/${id}`, { headers: { Authorization: token } }).then((response) => {
       setFormdata1({
         name: response.data.data.Name,
         parentid: response.data.data.parentid,
@@ -319,7 +319,7 @@ const CategoryList = () => {
   // delete category
   const deleteCategory = (CategoryID) => {
     axios
-      .delete(`${API_BASE_URL}/data/${CategoryID}`)
+      .delete(`${API_BASE_URL}/data/${CategoryID}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log(res.data);
         fetchData();

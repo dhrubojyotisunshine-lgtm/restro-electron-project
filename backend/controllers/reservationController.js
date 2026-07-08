@@ -198,127 +198,118 @@ const getUnavailability = async (req, res) => {
 //   });
 // };
 
-const updateUnavailability = (req, res) => {
+const updateUnavailability = async (req, res) => {
   const { id } = req.params;
-  const { offdaydate, start_time, end_time, availtime, is_active, created_by } =
-    req.body; // ✅ move here (outside callback)
+  const userId = req.id;
+  const { offdaydate, start_time, end_time, availtime, is_active } = req.body;
 
   if (!id) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Missing ID parameter" });
+    return res.status(400).json({ success: false, message: "Missing ID parameter" });
   }
 
-  const fetchCurrentDataSql =
-    "SELECT * FROM reservationofday WHERE offdayid = ?";
+  try {
+    const [userResult] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
 
-  db.get(fetchCurrentDataSql, [id], (fetchErr, currentData) => {
-    if (fetchErr) {
-      console.error("Database fetch error:", fetchErr);
-      return res
-        .status(500)
-        .json({ success: false, message: "Internal Server Error" });
+    if (!userResult) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    if (!currentData) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Reservation record not found" });
+    const creatorId = Number(userResult.is_admin) === 1 ? userId : userResult.created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized" });
     }
 
-    // ✅ safely build availtime
-    const finalAvailtime =
-      start_time && end_time
-        ? `${start_time} - ${end_time}`
-        : availtime || currentData.availtime;
-
-    const currentDateTime = new Date()
-      .toISOString()
-      .slice(0, 19)
-      .replace("T", " ");
-
-    const updatedData = {
-      offdaydate: offdaydate ?? currentData.offdaydate,
-      availtime: finalAvailtime,
-      is_active: is_active ?? currentData.is_active,
-      created_by: created_by ?? currentDateTime, // ✅ use date/time instead of system
-    };
-
-    const updateSql = `
-      UPDATE reservationofday 
-      SET offdaydate = ?, availtime = ?, is_active = ?, created_by = ?
-      WHERE offdayid = ?`;
-
-    console.log("Final SQL Params:", [
-      updatedData.offdaydate,
-      updatedData.availtime,
-      updatedData.is_active,
-      updatedData.created_by,
-      id,
-    ]);
-
-    db.run(
-      updateSql,
-      [
-        updatedData.offdaydate,
-        updatedData.availtime,
-        updatedData.is_active,
-        updatedData.created_by,
-        id,
-      ],
-      function (updateErr) {
-        if (updateErr) {
-          console.error("Database update error:", updateErr);
-          return res.status(500).json({
-            success: false,
-            message: "An error occurred while updating the reservation",
-          });
+    db.get(
+      "SELECT * FROM reservationofday WHERE offdayid = ? AND created_by = ?",
+      [id, creatorId],
+      (fetchErr, currentData) => {
+        if (fetchErr) {
+          console.error("Database fetch error:", fetchErr);
+          return res.status(500).json({ success: false, message: "Internal Server Error" });
         }
 
-        console.log("Rows updated:", this.changes);
-        res.status(200).json({
-          success: true,
-          message: "Reservation updated successfully",
-        });
-      },
+        if (!currentData) {
+          return res.status(404).json({ success: false, message: "Reservation record not found" });
+        }
+
+        const finalAvailtime =
+          start_time && end_time
+            ? `${start_time} - ${end_time}`
+            : availtime || currentData.availtime;
+
+        const updateSql = `
+          UPDATE reservationofday
+          SET offdaydate = ?, availtime = ?, is_active = ?
+          WHERE offdayid = ? AND created_by = ?`;
+
+        db.run(
+          updateSql,
+          [
+            offdaydate ?? currentData.offdaydate,
+            finalAvailtime,
+            is_active ?? currentData.is_active,
+            id,
+            creatorId,
+          ],
+          function (updateErr) {
+            if (updateErr) {
+              console.error("Database update error:", updateErr);
+              return res.status(500).json({ success: false, message: "An error occurred while updating the reservation" });
+            }
+
+            res.status(200).json({ success: true, message: "Reservation updated successfully" });
+          }
+        );
+      }
     );
-  });
+  } catch (error) {
+    console.error("Error in updateUnavailability:", error);
+    return res.status(500).json({ success: false, message: "An unexpected error occurred" });
+  }
 };
 
-const getUnavailabilitybyid = (req, res) => {
+const getUnavailabilitybyid = async (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
 
   if (!id) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required parameter: id",
-    });
+    return res.status(400).json({ success: false, message: "Missing required parameter: id" });
   }
 
-  const getReservationsQuery = `SELECT * FROM reservationofday WHERE offdayid = ?`;
+  try {
+    const [userResult] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
 
-  db.all(getReservationsQuery, [id], (err, result) => {
-    if (err) {
-      console.error("Error fetching reservations:", err);
-      return res.status(500).json({
-        success: false,
-        message: "An error occurred while fetching reservations",
-      });
+    if (!userResult) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    if (result && result.length > 0) {
-      return res.status(200).json({
-        success: true,
-        data: result,
-        message: "Reservations fetched successfully",
-      });
-    } else {
-      return res.status(404).json({
-        success: false,
-        message: `No reservations found for id ${id}`,
-      });
+    const creatorId = Number(userResult.is_admin) === 1 ? userId : userResult.created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized" });
     }
-  });
+
+    db.get(
+      `SELECT * FROM reservationofday WHERE offdayid = ? AND created_by = ?`,
+      [id, creatorId],
+      (err, result) => {
+        if (err) {
+          console.error("Error fetching reservation:", err);
+          return res.status(500).json({ success: false, message: "An error occurred while fetching reservations" });
+        }
+
+        if (!result) {
+          return res.status(404).json({ success: false, message: `No reservation found for id ${id}` });
+        }
+
+        return res.status(200).json({ success: true, data: result, message: "Reservation fetched successfully" });
+      }
+    );
+  } catch (error) {
+    console.error("Error in getUnavailabilitybyid:", error);
+    return res.status(500).json({ success: false, message: "An unexpected error occurred" });
+  }
 };
 
 const createReservation = (req, res) => {
@@ -582,16 +573,40 @@ const createReservation = (req, res) => {
   }
 };
 
-const deleteUnavailability = (req, res) => {
+const deleteUnavailability = async (req, res) => {
   const { id } = req.params;
-  const sql = `DELETE FROM reservationofday WHERE offdayid = ?`;
+  const userId = req.id;
 
-  db.run(sql, [id], (err, data) => {
-    if (err) {
-      return res.status(500).send(err);
+  try {
+    const [userResult] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
+
+    if (!userResult) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
-    res.status(200).send("Successfully deleted");
-  });
+
+    const creatorId = Number(userResult.is_admin) === 1 ? userId : userResult.created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized" });
+    }
+
+    db.run(
+      `DELETE FROM reservationofday WHERE offdayid = ? AND created_by = ?`,
+      [id, creatorId],
+      function (err) {
+        if (err) return res.status(500).json({ success: false, message: "An error occurred" });
+
+        if (this.changes === 0) {
+          return res.status(404).json({ success: false, message: "Record not found" });
+        }
+
+        res.status(200).json({ success: true, message: "Successfully deleted" });
+      }
+    );
+  } catch (error) {
+    console.error("Error in deleteUnavailability:", error);
+    return res.status(500).json({ success: false, message: "An unexpected error occurred" });
+  }
 };
 
 const getStatus = (occupied, capacity) => {
@@ -820,42 +835,43 @@ const getReservations = async (req, res) => {
 // get table byidreservation
 const getTableByIdreservation = async (req, res) => {
   const { tableid } = req.params;
+  const userId = req.id;
 
   try {
-    const query = `
-      SELECT tableid, tablename, person_capicity, occupied_seats, floor
-      FROM rest_table
-      WHERE tableid = ?
-    `;
+    const [userResult] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
 
-    db.get(query, [tableid], (err, result) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ success: false });
+    if (!userResult) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const creatorId = Number(userResult.is_admin) === 1 ? userId : userResult.created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized" });
+    }
+
+    db.get(
+      `SELECT tableid, tablename, person_capicity, occupied_seats, floor FROM rest_table WHERE tableid = ? AND created_by = ?`,
+      [tableid, creatorId],
+      (err, result) => {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ success: false });
+        }
+
+        if (!result) {
+          return res.status(404).json({ success: false, message: "Table not found" });
+        }
+
+        const data = {
+          ...result,
+          status: getStatus(result.occupied_seats, result.person_capicity),
+          remaining: result.person_capicity - result.occupied_seats,
+        };
+
+        return res.json({ success: true, data });
       }
-
-      if (!result) {
-        return res.status(404).json({
-          success: false,
-          message: "Table not found",
-        });
-      }
-
-      // ✅ add status dynamically
-      const getStatus = (occupied, capacity) => {
-        if (occupied >= capacity) return "booked";
-        if (occupied > 0) return "partial";
-        return "free";
-      };
-
-      const data = {
-        ...result,
-        status: getStatus(result.occupied_seats, result.person_capicity),
-        remaining: result.person_capicity - result.occupied_seats,
-      };
-
-      return res.json({ success: true, data });
-    });
+    );
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });
@@ -922,68 +938,85 @@ const updatereservationsetting = async (req, res) => {
   }
 };
 // delete reservation
-const deleteReservation = (req, res) => {
+const deleteReservation = async (req, res) => {
   const { id } = req.params;
-  console.log(id);
-
-  const deleteReservationQuery =
-    "DELETE FROM tblreservation WHERE reserveid = ?";
+  const userId = req.id;
 
   try {
-    db.run(deleteReservationQuery, [id], function (err) {
-      if (err) {
-        console.error("Database query error:", err);
-        return res.status(500).json({ error: "Database query error" });
-      }
+    const [userResult] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
 
-      if (this.changes === 0) {
-        return res.status(404).json({ error: "Reservation not found" });
-      }
+    if (!userResult) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
 
-      return res
-        .status(200)
-        .json({ message: "Reservation deleted successfully" });
-    });
+    const creatorId = Number(userResult.is_admin) === 1 ? userId : userResult.created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized" });
+    }
+
+    db.run(
+      "DELETE FROM tblreservation WHERE reserveid = ? AND created_by = ?",
+      [id, creatorId],
+      function (err) {
+        if (err) {
+          console.error("Database query error:", err);
+          return res.status(500).json({ error: "Database query error" });
+        }
+
+        if (this.changes === 0) {
+          return res.status(404).json({ error: "Reservation not found" });
+        }
+
+        return res.status(200).json({ message: "Reservation deleted successfully" });
+      }
+    );
   } catch (error) {
     console.error("Unexpected error:", error);
-    return res.status(500).json({
-      error: "An error occurred while deleting the reservation",
-    });
+    return res.status(500).json({ error: "An error occurred while deleting the reservation" });
   }
 };
 
-const getReservationById = (req, res) => {
+const getReservationById = async (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
 
-  const query = `
-    SELECT 
-        ci.customer_name, 
-        rt.tablename, 
-        r.person_capicity, 
-        r.formtime AS start_time, 
-        r.totime AS end_time, 
-        r.reserveday AS date, 
+  try {
+    const [userResult] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
+
+    if (!userResult) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const creatorId = Number(userResult.is_admin) === 1 ? userId : userResult.created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized" });
+    }
+
+    const query = `
+      SELECT
+        ci.customer_name,
+        rt.tablename,
+        r.person_capicity,
+        r.formtime AS start_time,
+        r.totime AS end_time,
+        r.reserveday AS date,
         ci.customer_email,
         ci.customer_phone,
         r.reserveid,
-        CASE 
-            WHEN r.status = 0 THEN 'free' 
-            WHEN r.status = 1 THEN 'Booked' 
-            ELSE 'unknown' 
-        END AS status 
-    FROM 
-        tblreservation r
-    JOIN 
-        customer_info ci ON r.cid = ci.customer_id
-    JOIN 
-        rest_table rt ON r.tableid = rt.tableid
-    WHERE 
-        r.reserveid = ?
-  `;
+        CASE
+          WHEN r.status = 0 THEN 'free'
+          WHEN r.status = 1 THEN 'Booked'
+          ELSE 'unknown'
+        END AS status
+      FROM tblreservation r
+      JOIN customer_info ci ON r.cid = ci.customer_id
+      JOIN rest_table rt ON r.tableid = rt.tableid
+      WHERE r.reserveid = ? AND r.created_by = ?
+    `;
 
-  try {
-    db.get(query, [id], (err, result) => {
-      // use db.get for single row
+    db.get(query, [id, creatorId], (err, result) => {
       if (err) {
         console.error("Database query error:", err);
         return res.status(500).json({ error: "Database query error" });
@@ -997,9 +1030,7 @@ const getReservationById = (req, res) => {
     });
   } catch (error) {
     console.error("Unexpected error:", error);
-    return res
-      .status(500)
-      .json({ error: "An error occurred while retrieving the reservation" });
+    return res.status(500).json({ error: "An error occurred while retrieving the reservation" });
   }
 };
 
@@ -1101,8 +1132,9 @@ const getReservationById = (req, res) => {
 //     res.status(500).json({ success: false, message: 'An error occurred while updating reservation and customer info' });
 //   }
 // };
-const updateReservationAndCustomer = (req, res) => {
+const updateReservationAndCustomer = async (req, res) => {
   const { reserveid } = req.params;
+  const userId = req.id;
   const {
     customer_name,
     customer_email,
@@ -1111,18 +1143,30 @@ const updateReservationAndCustomer = (req, res) => {
     totime,
     reserveday,
   } = req.body;
-  console.log(req.body);
-  const getReservationDataQuery =
-    "SELECT * FROM tblreservation WHERE reserveid = ?";
-  const getCustomerDataQuery =
-    "SELECT * FROM customer_info WHERE customer_id = ?";
-  const updateCustomerQuery =
-    "UPDATE customer_info SET customer_name = ?, customer_email = ?, customer_phone = ? WHERE customer_id = ?";
-  const updateReservationQuery =
-    "UPDATE tblreservation SET totime = ?, formtime = ?, reserveday = ? WHERE reserveid = ?";
 
   try {
-    db.all(getReservationDataQuery, [reserveid], (err, reservationData) => {
+    const [userResult] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
+
+    if (!userResult) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const creatorId = Number(userResult.is_admin) === 1 ? userId : userResult.created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "You are not authorized" });
+    }
+
+    const getReservationDataQuery =
+      "SELECT * FROM tblreservation WHERE reserveid = ? AND created_by = ?";
+    const getCustomerDataQuery =
+      "SELECT * FROM customer_info WHERE customer_id = ?";
+    const updateCustomerQuery =
+      "UPDATE customer_info SET customer_name = ?, customer_email = ?, customer_phone = ? WHERE customer_id = ?";
+    const updateReservationQuery =
+      "UPDATE tblreservation SET totime = ?, formtime = ?, reserveday = ? WHERE reserveid = ? AND created_by = ?";
+
+    db.get(getReservationDataQuery, [reserveid, creatorId], (err, reservationData) => {
       if (err) {
         console.error("Error fetching reservation:", err);
         return res.status(500).json({
@@ -1136,9 +1180,8 @@ const updateReservationAndCustomer = (req, res) => {
           .status(404)
           .json({ success: false, message: "Reservation not found" });
       }
-      console.log("reservation", reservationData);
-      const customer_id = reservationData[0].cid;
-      console.log("id", customer_id);
+
+      const customer_id = reservationData.cid;
 
       db.get(getCustomerDataQuery, [customer_id], (err, customerData) => {
         if (err) {
@@ -1191,6 +1234,7 @@ const updateReservationAndCustomer = (req, res) => {
                 updatedReservationData.formtime,
                 updatedReservationData.reserveday,
                 reserveid,
+                creatorId,
               ],
               function (err) {
                 if (err) {

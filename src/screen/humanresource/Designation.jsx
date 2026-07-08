@@ -162,7 +162,7 @@ const Designation = () => {
   };
   const DeletePosition = (id) => {
     axios
-      .delete(`${API_BASE_URL}/designation/${id}`)
+      .delete(`${API_BASE_URL}/designation/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete position sucessfully..");
@@ -189,7 +189,7 @@ const Designation = () => {
     setEditId(id);
     setIsModalOpen2(true);
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/designation/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/designation/${id}`, { headers: { Authorization: token } }).then((response) => {
       console.log("data recive", response.data);
 
       setFormData2({

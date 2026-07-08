@@ -349,7 +349,7 @@ const AddPurchase = () => {
 
   const allPaynmnetMethod = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/paynmenttype`);
+      const response = await axios.get(`${API_BASE_URL}/paynmenttype`, { headers: { Authorization: token } });
       setPaymentMethod(response.data);
     } catch (error) {
       console.error(error);

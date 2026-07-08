@@ -170,7 +170,7 @@ const token = localStorage.getItem("token");
   };
   const DeleteDivision = (id) => {
     axios
-      .delete(`${API_BASE_URL}/deletedivision/${id}`)
+      .delete(`${API_BASE_URL}/deletedivision/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete Division sucessfully..");
@@ -195,7 +195,7 @@ const[createdby,setCreatesby]=useState("")
     setIsModalOpen2(true);
 
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/getdivisionbyid/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/getdivisionbyid/${id}`, { headers: { Authorization: token } }).then((response) => {
       console.log("data received", response.data);
 
       // Assuming your response structure is correct as per your data example
@@ -219,7 +219,7 @@ const[createdby,setCreatesby]=useState("")
         department_name,
         parent_id,
         created_by
-      });
+      }, { headers: { Authorization: token } });
       toast.success("Updated Successfully!");
       getallDivision();
       setIsModalOpen2(false); // Close the modal after submission

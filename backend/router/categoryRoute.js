@@ -23,7 +23,7 @@ const upload = multer({
 
 router.get("/data",verifyToken, dataController.getCategory);
 router.post("/data", upload.single("image"), auth,verifyToken, dataController.addCategory);
-router.delete("/data/:id", dataController.deletCategory);
+router.delete("/data/:id", verifyToken, dataController.deletCategory);
 router.put(
   "/data/:id",
   upload.single("image"),
@@ -31,7 +31,7 @@ router.put(
   verifyToken,
   dataController.updateCategory,
 );
-router.get("/data/:id", dataController.getCategoryById);
+router.get("/data/:id", verifyToken, dataController.getCategoryById);
 
 router.post("/bulkupload", auth, dataController.bulkUploadCategory);
 

@@ -163,7 +163,15 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
     toast.error("Add-On Name is required");
     return;
   }
-  if (!currentAddOns.price || !currentAddOns.price.trim()) {
+  // if (!currentAddOns.price || !currentAddOns.price.trim()) {
+  //   toast.error("Price is required");
+  //   return;
+  // }
+  if (
+    currentAddOns.price === undefined ||
+    currentAddOns.price === null ||
+    !String(currentAddOns.price).trim()
+  ) {
     toast.error("Price is required");
     return;
   }
@@ -171,7 +179,8 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
   try {
     await axios.put(`${API_BASE_URL}/addons/${add_on_Id}`, {
       add_on_name: currentAddOns.add_on_name.trim(),
-      price: currentAddOns.price.trim(),
+      // price: currentAddOns.price.trim(),
+      price: Number(currentAddOns.price),
       is_active: currentAddOns.is_active,
       created_by: currentAddOns.created_by
     });
@@ -195,6 +204,7 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
       toast.error("Add One Price is required");
       return;
     }
+    
     try {
       const res = await axios.post(`${API_BASE_URL}/addons`, formData,{
         headers:{

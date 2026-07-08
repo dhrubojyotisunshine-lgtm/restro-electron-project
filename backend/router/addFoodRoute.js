@@ -32,16 +32,16 @@ router.post(
   addfoodController.createItemFood,
 );
 
-router.delete("/itemfood/:ProductsID", addfoodController.deleteItemFood);
+router.delete("/itemfood/:ProductsID", verifyToken, addfoodController.deleteItemFood);
 
 router.get("/itemfood",verifyToken, addfoodController.getAllItemFoodDetails);
-router.get("/itemfooddetail/:id", addfoodController.getItemFoodDetails);
+router.get("/itemfooddetail/:id", verifyToken, addfoodController.getItemFoodDetails);
 router.put(
   "/itemfood/:ProductID",
   upload.single("ProductImage"),
   auth,
   addfoodController.updateItemFood,
 );
-router.post("/bulk-upload-food", addfoodController.bulkUploadFood);
+router.post("/bulk-upload-food", verifyToken, addfoodController.bulkUploadFood);
 
 module.exports = router;

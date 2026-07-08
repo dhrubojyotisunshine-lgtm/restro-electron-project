@@ -272,26 +272,9 @@ const Menuecard = [
 const Home = () => {
   const username = localStorage.getItem("username");
 
-  const planData = JSON.parse(localStorage.getItem("planData") || "null");
-  console.log(username, planData);
-
-  let showWarning = false;
-  let formattedEndDate = "";
-
-  const today = dayjs();
-  let endDate;
-
-  if (Array.isArray(planData) && planData.length > 0 && planData[0]?.end_date) {
-    endDate = dayjs(planData[0].end_date);
-  } else if (planData && planData.end_date) {
-    endDate = dayjs(planData.end_date);
-  }
-
-  if (endDate) {
-    showWarning =
-      endDate.diff(today, "day") <= 7 && endDate.diff(today, "day") >= 0;
-    formattedEndDate = endDate.format("MMMM D, YYYY");
-  }
+  const [isExpired, setIsExpired] = useState(false);
+  const [showWarning, setShowWarning] = useState(false);
+  const [formattedEndDate, setFormattedEndDate] = useState("");
 
   const [modalTitle, setModalTitle] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -318,6 +301,38 @@ const Home = () => {
   const [orders, setOrders] = useState([]);
   const { permissions, isAdmin } = useContext(AuthContext);
   const token = localStorage.getItem("token");
+  const userId = localStorage.getItem("userId");
+
+  useEffect(() => {
+    if (!userId) return;
+    axios
+      .get(`${API_BASE_URL}/subscriptions/${userId}`)
+      .then((res) => {
+        const subs = res.data?.data || [];
+        if (subs.length === 0) return;
+        const latest = subs[0];
+        const today = dayjs();
+        const endDate = latest.end_date ? dayjs(latest.end_date) : null;
+        if (endDate) {
+          const daysLeft = endDate.diff(today, "day");
+          if (daysLeft < 0) {
+            setIsExpired(true);
+            setShowWarning(false);
+            setFormattedEndDate(endDate.format("MMMM D, YYYY"));
+          } else if (daysLeft <= 7) {
+            setShowWarning(true);
+            setIsExpired(false);
+            setFormattedEndDate(endDate.format("MMMM D, YYYY"));
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback: use login-time status from localStorage
+        if (localStorage.getItem("subscriptionStatus") === "expired") {
+          setIsExpired(true);
+        }
+      });
+  }, []);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const selectPage = (page) => {
@@ -366,22 +381,6 @@ const Home = () => {
         modulePermissions.can_delete === 1)
     );
   };
-  useEffect(() => {
-    if (Array.isArray(planData) && planData.length > 0) {
-      const firstPlan = planData[0];
-
-      if (firstPlan?.end_date) {
-        const endDate = dayjs(firstPlan.end_date);
-        const today = dayjs();
-
-        const daysLeft = endDate.diff(today, "day");
-
-        console.log("End Date:", endDate.format());
-        console.log("Days Left:", daysLeft);
-      }
-    }
-  }, [planData]);
-
   useEffect(() => {
     rcenttransaction();
   }, []);
@@ -440,13 +439,27 @@ const Home = () => {
           </div>
 
           <h1 className="mt-7 font-bold text-xl">Welcome {username}</h1>
+          {isExpired && (
+            <div className="bg-red-100 border-l-4 border-red-600 text-red-800 p-4 my-2 rounded flex justify-between items-center">
+              <div>
+                🚫 Dear <strong>{username}</strong>, your subscription has
+                expired. Please renew your plan to continue using all features.
+              </div>
+              <button
+                onClick={() => navigate("/my-subscription")}
+                className="ml-4 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded shadow"
+              >
+                Renew Plan
+              </button>
+            </div>
+          )}
           {showWarning && (
             <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 my-2 rounded flex justify-between items-center">
               <div>
                 ⚠️ Dear <strong>{username}</strong>, your subscription will
                 expire on{" "}
                 <strong>
-                  {dayjs(planData.end_date).format("MMMM D, YYYY")}
+                  {formattedEndDate}
                 </strong>
                 . Please renew it soon.
               </div>

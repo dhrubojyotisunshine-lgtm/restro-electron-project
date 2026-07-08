@@ -1,5 +1,14 @@
 const db = require("../utils/db");
 
+const resolveCreatorId = (userId, callback) => {
+  db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+    if (err) return callback(err, null);
+    if (!row) return callback(null, null);
+    const creatorId = Number(row.is_admin) === 1 ? userId : row.created_by;
+    callback(null, creatorId);
+  });
+};
+
 // const getPurchaseItemDetails = (req, res) => {
 //   const { searchItem } = req.query; // Assuming searchItem comes from query parameters
 
@@ -340,11 +349,16 @@ const getPurchaseItemDetails = (req, res) => {
 
 const getPurchaseItemById = (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
   console.log(id);
 
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
   // Fetch purchase item data
-  const getPurchaseItemQuery = `SELECT * FROM purchaseitem WHERE purID = ?`;
-  db.get(getPurchaseItemQuery, [id], (err, purchaseItem) => {
+  const getPurchaseItemQuery = `SELECT * FROM purchaseitem WHERE purID = ? AND savedby = ?`;
+  db.get(getPurchaseItemQuery, [id, creatorId], (err, purchaseItem) => {
     if (err) {
       console.error("Error fetching purchase item:", err);
       return res.status(500).send("Server error");
@@ -479,6 +493,7 @@ const getPurchaseItemById = (req, res) => {
       );
     }
   });
+  }); // resolveCreatorId
 };
 
 const getReturnpurchase = (req, res) => {
@@ -533,7 +548,7 @@ const getReturnpurchase = (req, res) => {
         FROM purchase_return
         LEFT JOIN supplier 
           ON purchase_return.supplier_id = supplier.supid
-        WHERE purchase_return.created_by = ?
+        WHERE purchase_return.createby = ?
       `;
 
       let values = [creatorId];
@@ -1114,16 +1129,23 @@ const stockOutIngredients = (req, res) => {
 
 const deleteSupplier = (req, res) => {
   const { id } = req.params;
-  const query = "DELETE FROM supplier WHERE supid=?";
-  db.run(query, [id], (err, results) => {
-    if (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "An error occurred" });
-    } else {
-      res
-        .status(200)
-        .json({ success: true, message: "Supplier deleted successfully" });
-    }
+  const userId = req.id;
+
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
+    const query = "DELETE FROM supplier WHERE supid = ? AND created_by = ?";
+    db.run(query, [id, creatorId], function (err) {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "An error occurred" });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ success: false, message: "Supplier not found" });
+      }
+      res.status(200).json({ success: true, message: "Supplier deleted successfully" });
+    });
   });
 };
 //  const updateSupplier = (req, res) => {
@@ -1173,99 +1195,68 @@ const deleteSupplier = (req, res) => {
 const updateSupplier = (req, res) => {
   const { id } = req.params;
   const { supName, supEmail, supMobile, supAddress } = req.body;
+  const userId = req.id;
 
-  const query = "SELECT * FROM supplier WHERE supid = ?";
-  db.all(query, [id], (err, results) => {
-    if (err) {
-      console.error("Error retrieving supplier:", err);
-      return res.status(500).json({
-        success: false,
-        message: "An error occurred while retrieving the supplier",
-      });
-    }
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-    if (results.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Supplier not found" });
-    }
-
-    const currentData = results[0];
-    const updateData = {
-      supName: supName !== undefined ? supName : currentData.supName,
-      supEmail: supEmail !== undefined ? supEmail : currentData.supEmail,
-      supMobile: supMobile !== undefined ? supMobile : currentData.supMobile,
-      supAddress:
-        supAddress !== undefined ? supAddress : currentData.supAddress,
-    };
-
-    const updateSupplierQuery = `
-      UPDATE supplier 
-      SET supName = ?, supEmail = ?, supMobile = ?, supAddress = ?
-      WHERE supid = ?
-    `;
-    const values = [
-      updateData.supName,
-      updateData.supEmail,
-      updateData.supMobile,
-      updateData.supAddress,
-      id,
-    ];
-
-    db.run(updateSupplierQuery, values, function (err) {
+    const query = "SELECT * FROM supplier WHERE supid = ? AND created_by = ?";
+    db.all(query, [id, creatorId], (err, results) => {
       if (err) {
-        console.error("Error updating supplier:", err);
-        return res.status(500).json({
-          success: false,
-          message: "An error occurred while updating the supplier",
-        });
+        console.error("Error retrieving supplier:", err);
+        return res.status(500).json({ success: false, message: "An error occurred while retrieving the supplier" });
+      }
+      if (results.length === 0) {
+        return res.status(404).json({ success: false, message: "Supplier not found" });
       }
 
-      if (this.changes === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Supplier not found or no changes made",
-        });
-      } else {
-        return res
-          .status(200)
-          .json({ success: true, message: "Supplier updated successfully" });
-      }
+      const currentData = results[0];
+      const updateData = {
+        supName: supName !== undefined ? supName : currentData.supName,
+        supEmail: supEmail !== undefined ? supEmail : currentData.supEmail,
+        supMobile: supMobile !== undefined ? supMobile : currentData.supMobile,
+        supAddress: supAddress !== undefined ? supAddress : currentData.supAddress,
+      };
+
+      const updateSupplierQuery = `
+        UPDATE supplier
+        SET supName = ?, supEmail = ?, supMobile = ?, supAddress = ?
+        WHERE supid = ? AND created_by = ?
+      `;
+      db.run(updateSupplierQuery, [updateData.supName, updateData.supEmail, updateData.supMobile, updateData.supAddress, id, creatorId], function (err) {
+        if (err) {
+          console.error("Error updating supplier:", err);
+          return res.status(500).json({ success: false, message: "An error occurred while updating the supplier" });
+        }
+        if (this.changes === 0) {
+          return res.status(404).json({ success: false, message: "Supplier not found or no changes made" });
+        }
+        return res.status(200).json({ success: true, message: "Supplier updated successfully" });
+      });
     });
   });
 };
 
 const getSupplierById = (req, res) => {
-  const { id } = req.params; // Get supplier ID from request parameters
+  const { id } = req.params;
+  const userId = req.id;
 
-  // Query to get supplier details by ID
-  const query = `
-    SELECT 
-     *
-    FROM supplier 
-    WHERE supplier.supid = ?
-  `;
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-  // Execute the query
-  db.all(query, [id], (err, results) => {
-    if (err) {
-      console.error("Error fetching supplier by ID:", err);
-      return res.status(500).json({
-        success: false,
-        message: "An error occurred while fetching supplier",
-      });
-    } else if (results.length === 0) {
-      // No supplier found with the given ID
-      return res
-        .status(404)
-        .json({ success: false, message: "Supplier not found" });
-    } else {
-      return res.status(200).json({
-        success: true,
-        data: results[0],
-        message: "Supplier fetched successfully",
-      });
-    }
+    const query = "SELECT * FROM supplier WHERE supid = ? AND created_by = ?";
+    db.all(query, [id, creatorId], (err, results) => {
+      if (err) {
+        console.error("Error fetching supplier by ID:", err);
+        return res.status(500).json({ success: false, message: "An error occurred while fetching supplier" });
+      }
+      if (results.length === 0) {
+        return res.status(404).json({ success: false, message: "Supplier not found" });
+      }
+      return res.status(200).json({ success: true, data: results[0], message: "Supplier fetched successfully" });
+    });
   });
 };
 
@@ -2169,6 +2160,7 @@ const createPurchaseItem = (req, res) => {
 
 const updatePurchaseItem = (req, res) => {
   const { purchaseid } = req.params;
+  const userId = req.id;
   console.log("p", purchaseid);
   const { purchasedetail, itemdetails } = req.body;
 
@@ -2180,18 +2172,21 @@ const updatePurchaseItem = (req, res) => {
     details,
     purchasedate,
     purchaseexpiredate,
-    savedby = 178,
     finalBankId,
     suplierID,
   } = purchasedetail[0];
+
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
   let finalBankIdToUse = null;
   if (paymenttype === 1) {
     finalBankIdToUse = finalBankId;
   }
 
-  const getPurchaseItemQuery = `SELECT * FROM purchaseitem WHERE purID = ?`;
-  db.get(getPurchaseItemQuery, [purchaseid], (err, currentData) => {
+  const getPurchaseItemQuery = `SELECT * FROM purchaseitem WHERE purID = ? AND savedby = ?`;
+  db.get(getPurchaseItemQuery, [purchaseid, creatorId], (err, currentData) => {
     if (err) {
       console.error("Error fetching purchase item:", err);
       return res.status(500).send("Server error");
@@ -2259,7 +2254,7 @@ const updatePurchaseItem = (req, res) => {
         const insertPurchaseDetails = (index) => {
           if (index >= itemdetails.length) {
             const updateSupplierLedgerCreditQuery = `
-              UPDATE supplier_ledger 
+              UPDATE supplier_ledger
               SET amount = ?, description = ?, chalan_no = ?, payment_type = ?, date = ?, transaction_id = ?, supplier_id = ?
               WHERE transaction_id = ? AND d_c = 'c'
             `;
@@ -2274,56 +2269,49 @@ const updatePurchaseItem = (req, res) => {
               currentData.invoiceid,
             ];
 
-            db.run(
-              updateSupplierLedgerCreditQuery,
-              creditLedgerValues,
-              function (err) {
-                if (err) {
-                  console.error(
-                    "Error updating supplier ledger (credit):",
-                    err,
-                  );
-                  return res.status(500).send("Server error");
-                }
+            db.run(updateSupplierLedgerCreditQuery, creditLedgerValues, function (err) {
+              if (err) {
+                console.error("Error updating supplier ledger (credit):", err);
+                return res.status(500).send("Server error");
+              }
 
+              const oldPaid = parseFloat(currentData.paid_amount) || 0;
+              const newPaid = parseFloat(updatedData.paid_amount) || 0;
+              const extraPayment = parseFloat((newPaid - oldPaid).toFixed(2));
+
+              if (extraPayment > 0) {
                 const debitDescription = `Purchase From Supplier ${updatedData.details}`;
-                const updateSupplierLedgerDebitQuery = `
-                UPDATE supplier_ledger 
-                SET amount = ?, description = ?, chalan_no = ?, payment_type = ?, date = ?, transaction_id = ?, supplier_id = ?
-                WHERE transaction_id = ? AND d_c = 'd'
-              `;
+                const insertSupplierLedgerDebitQuery = `
+                  INSERT INTO supplier_ledger (supplier_id, transaction_id, chalan_no, amount, d_c, description, payment_type, date, status)
+                  VALUES (?, ?, ?, ?, 'd', ?, ?, ?, 1)
+                `;
                 const debitLedgerValues = [
-                  updatedData.paid_amount,
-                  debitDescription,
+                  updatedData.suplierID,
                   updatedData.invoiceid,
+                  updatedData.invoiceid,
+                  extraPayment,
+                  debitDescription,
                   updatedData.paymenttype,
                   updatedData.purchasedate,
-                  updatedData.invoiceid,
-                  updatedData.suplierID,
-                  currentData.invoiceid,
                 ];
 
-                db.run(
-                  updateSupplierLedgerDebitQuery,
-                  debitLedgerValues,
-                  function (err) {
-                    if (err) {
-                      console.error(
-                        "Error updating supplier ledger (debit):",
-                        err,
-                      );
-                      return res.status(500).send("Server error");
-                    }
-
-                    return res.status(200).send({
-                      data: { purchaseItemId: purchaseid },
-                      message:
-                        "Purchase item, details, and supplier ledger entries updated successfully",
-                    });
-                  },
-                );
-              },
-            );
+                db.run(insertSupplierLedgerDebitQuery, debitLedgerValues, function (err) {
+                  if (err) {
+                    console.error("Error inserting supplier ledger (debit):", err);
+                    return res.status(500).send("Server error");
+                  }
+                  return res.status(200).send({
+                    data: { purchaseItemId: purchaseid },
+                    message: "Purchase item, details, and supplier ledger entries updated successfully",
+                  });
+                });
+              } else {
+                return res.status(200).send({
+                  data: { purchaseItemId: purchaseid },
+                  message: "Purchase item, details, and supplier ledger entries updated successfully",
+                });
+              }
+            });
 
             return;
           }
@@ -2344,7 +2332,7 @@ const updatePurchaseItem = (req, res) => {
             currentTotalPrice,
             updatedData.purchasedate,
             updatedData.purchaseexpiredate,
-            savedby,
+            creatorId,
           ];
 
           db.run(
@@ -2379,6 +2367,7 @@ const updatePurchaseItem = (req, res) => {
       });
     });
   });
+  }); // resolveCreatorId
 };
 
 const getAllStockIngredients = async (req, res) => {
@@ -2469,14 +2458,20 @@ const getAllStockIngredients = async (req, res) => {
 
 const fetchInvoiceIdThroughSupplier = (req, res) => {
   const { suplierID } = req.query;
+  const userId = req.id;
 
-  const sql = "SELECT invoiceid FROM purchaseitem WHERE suplierID = ?";
-  db.all(sql, [suplierID], (err, data) => {
-    if (err) {
-      console.log(err);
-      return res.status(500).send({ message: "Database error", error: err });
-    }
-    res.status(200).send({ data: data });
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
+    const sql = "SELECT invoiceid FROM purchaseitem WHERE suplierID = ? AND savedby = ?";
+    db.all(sql, [suplierID, creatorId], (err, data) => {
+      if (err) {
+        console.log(err);
+        return res.status(500).send({ message: "Database error", error: err });
+      }
+      res.status(200).send({ data: data });
+    });
   });
 };
 
@@ -2606,15 +2601,21 @@ const fetchInvoiceIdThroughSupplier = (req, res) => {
 
 const invoiceBySupplier = (req, res) => {
   const { supplierID, invoiceID } = req.query;
+  const userId = req.id;
+
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
   const query = `
-    SELECT * 
-    FROM purchaseitem 
-    WHERE suplierID = ? 
+    SELECT *
+    FROM purchaseitem
+    WHERE suplierID = ?
       AND invoiceid = ?
+      AND savedby = ?
   `;
 
-  db.all(query, [supplierID, invoiceID], (err, results) => {
+  db.all(query, [supplierID, invoiceID, creatorId], (err, results) => {
     if (err) {
       console.error("Error fetching invoice by supplier:", err);
       return res.status(500).send("Server error");
@@ -2672,6 +2673,7 @@ const invoiceBySupplier = (req, res) => {
       return res.status(404).send("No invoices found for this supplier");
     }
   });
+  }); // resolveCreatorId
 };
 
 // const purReturnInsert = (req, res) => {
@@ -3415,80 +3417,61 @@ const purReturnInsert = (req, res) => {
 
 const getPurchaseTransactions = (req, res) => {
   const { startDate, endDate, supplier_id } = req.query;
+  const userId = req.id;
   console.log(startDate, endDate, supplier_id);
 
-  // Check if at least one filter is applied
   if (!supplier_id && (!startDate || !endDate)) {
     return res.status(400).json({
       success: false,
-      message:
-        "At least one filter (supplier_id, startDate, endDate) is required",
+      message: "At least one filter (supplier_id, startDate, endDate) is required",
     });
   }
 
-  // Base query
-  let query = `
-    SELECT 
-      si.supid,
-      si.suplier_code,
-      si.supName,
-      si.supEmail,
-      si.supMobile,
-      si.supAddress,
-      s.supplier_id,
-      s.chalan_no AS invoice_no,
-      s.deposit_no,
-      s.description,
-      s.d_c,
-      s.date,
-      CASE 
-        WHEN s.d_c = 'c' THEN s.amount 
-        ELSE 0 
-      END AS credit_amount,
-      CASE 
-        WHEN s.d_c = 'd' THEN s.amount 
-        ELSE 0 
-      END AS debit_amount
-    FROM supplier_ledger s
-    LEFT JOIN supplier si ON s.supplier_id = si.supid
-    WHERE 1 = 1
-  `;
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-  const queryParams = [];
+    let query = `
+      SELECT
+        si.supid,
+        si.suplier_code,
+        si.supName,
+        si.supEmail,
+        si.supMobile,
+        si.supAddress,
+        s.supplier_id,
+        s.chalan_no AS invoice_no,
+        s.deposit_no,
+        s.description,
+        s.d_c,
+        s.date,
+        CASE WHEN s.d_c = 'c' THEN s.amount ELSE 0 END AS credit_amount,
+        CASE WHEN s.d_c = 'd' THEN s.amount ELSE 0 END AS debit_amount
+      FROM supplier_ledger s
+      LEFT JOIN supplier si ON s.supplier_id = si.supid
+      WHERE si.created_by = ?
+    `;
+    const queryParams = [creatorId];
 
-  // Filters
-  if (supplier_id) {
-    query += " AND s.supplier_id = ?";
-    queryParams.push(String(supplier_id));
-  }
-
-  console.log("Supplier ID type:", typeof supplier_id, supplier_id);
-
-  if (startDate && endDate) {
-    query += " AND date(s.date) BETWEEN date(?) AND date(?)";
-    queryParams.push(startDate, endDate);
-  }
-
-  // Use db.all instead of db.pool.all
-  db.all(query, queryParams, (err, results) => {
-    if (err) {
-      console.error("Error fetching purchase transactions:", err);
-      return res.status(500).json({
-        success: false,
-        message: "An error occurred while fetching purchase transactions",
-      });
+    if (supplier_id) {
+      query += " AND s.supplier_id = ?";
+      queryParams.push(String(supplier_id));
     }
-    if (results.length === 0) {
-      return res.status(200).json({
-        success: true,
-        data: [],
-        message: "No transactions found for the selected filters",
-      });
+
+    if (startDate && endDate) {
+      query += " AND date(s.date) BETWEEN date(?) AND date(?)";
+      queryParams.push(startDate, endDate);
     }
-    res.status(200).json({
-      success: true,
-      data: results,
-      message: "Purchase transactions fetched successfully",
+
+    db.all(query, queryParams, (err, results) => {
+      if (err) {
+        console.error("Error fetching purchase transactions:", err);
+        return res.status(500).json({ success: false, message: "An error occurred while fetching purchase transactions" });
+      }
+      if (results.length === 0) {
+        return res.status(200).json({ success: true, data: [], message: "No transactions found for the selected filters" });
+      }
+      res.status(200).json({ success: true, data: results, message: "Purchase transactions fetched successfully" });
     });
   });
 };
@@ -3565,31 +3548,36 @@ const getPurchaseTransactions = (req, res) => {
 // };
 const getReturnItemInfoByID = (req, res) => {
   const { id } = req.params;
+  const userId = req.id;
+
+  resolveCreatorId(userId, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: "Server error" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
   const query = `
-    SELECT 
-      pr.preturn_id, 
-      pr.supplier_id, 
-      pr.po_no AS invoiceno, 
-      pr.return_date, 
-      pr.totalamount, 
-      pr.totaldiscount, 
-      pr.return_reason, 
-      pr.createby, 
-      pr.createdate, 
-      pr.updateby, 
-      pr.updatedate, 
+    SELECT
+      pr.preturn_id,
+      pr.supplier_id,
+      pr.po_no AS invoiceno,
+      pr.return_date,
+      pr.totalamount,
+      pr.totaldiscount,
+      pr.return_reason,
+      pr.createby,
+      pr.createdate,
+      pr.updateby,
+      pr.updatedate,
       s.supName,
-      prd.product_id, 
-      prd.qty, 
-      prd.product_rate, 
-      prd.store_id, 
-      prd.discount, 
-      i.ingredient_name, 
+      prd.product_id,
+      prd.qty,
+      prd.product_rate,
+      prd.store_id,
+      prd.discount,
+      i.ingredient_name,
       uom.uom_short_code
     FROM purchase_return_details prd
     LEFT JOIN ingredients i ON prd.product_id = i.id
-    INNER JOIN unit_of_measurement uom ON uom.id = i.uom_id
+    LEFT JOIN unit_of_measurement uom ON uom.id = i.uom_id
     LEFT JOIN purchase_return pr ON prd.preturn_id = pr.preturn_id
     LEFT JOIN supplier s ON pr.supplier_id = s.supid
     WHERE prd.preturn_id = ?
@@ -3632,55 +3620,49 @@ const getReturnItemInfoByID = (req, res) => {
       return res.status(404).send("No return items found");
     }
   });
+  }); // resolveCreatorId
 };
 
 const getPurchaseHistory = (req, res) => {
   const { purchaseid } = req.params;
   const userId = req.id;
 
-  const userQuery = "SELECT is_admin, created_by FROM user WHERE id = ?";
-  db.get(userQuery, [userId], (err, userData) => {
+  resolveCreatorId(userId, (err, creatorId) => {
     if (err) return res.status(500).json({ success: false, message: "Server error" });
-    if (!userData) return res.status(404).json({ success: false, message: "User not found" });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-    const checkSubscriptionQuery = "SELECT 1 FROM superadmin_user_plans WHERE user_id = ? LIMIT 1";
-    db.get(checkSubscriptionQuery, [userId], (err, ownSub) => {
-      if (err) return res.status(500).json({ success: false, message: "Server error" });
-      const creatorId = ownSub ? userId : (userData.created_by || userId);
+    db.get(
+      "SELECT invoiceid, total_price, paid_amount FROM purchaseitem WHERE purID = ? AND savedby = ?",
+      [purchaseid, creatorId],
+      (err, purchase) => {
+        if (err) return res.status(500).json({ success: false, message: "Server error" });
+        if (!purchase) return res.status(404).json({ success: false, message: "Purchase not found" });
 
-      db.get(
-        "SELECT invoiceid, total_price, paid_amount FROM purchaseitem WHERE purID = ? AND savedby = ?",
-        [purchaseid, creatorId],
-        (err, purchase) => {
+        const { invoiceid, total_price, paid_amount } = purchase;
+
+        const getHistoryQuery = `
+          SELECT sl.amount, sl.description, sl.d_c, sl.date,
+            COALESCE(pm.payment_method, 'Cash') AS payment_mode
+          FROM supplier_ledger sl
+          LEFT JOIN payment_method pm ON CAST(sl.payment_type AS INTEGER) = pm.payment_method_id
+          WHERE CAST(sl.transaction_id AS INTEGER) = ?
+            AND CAST(sl.supplier_id AS INTEGER) IN (
+              SELECT suplierID FROM purchaseitem WHERE invoiceid = ? AND savedby = ?
+            )
+          ORDER BY sl.date ASC
+        `;
+
+        db.all(getHistoryQuery, [invoiceid, invoiceid, creatorId], (err, history) => {
           if (err) return res.status(500).json({ success: false, message: "Server error" });
-          if (!purchase) return res.status(404).json({ success: false, message: "Purchase not found" });
-
-          const { invoiceid, total_price, paid_amount } = purchase;
-
-          const getHistoryQuery = `
-            SELECT sl.amount, sl.description, sl.d_c, sl.date,
-              COALESCE(pm.payment_method, 'Cash') AS payment_mode
-            FROM supplier_ledger sl
-            LEFT JOIN payment_method pm ON CAST(sl.payment_type AS INTEGER) = pm.payment_method_id
-            WHERE CAST(sl.transaction_id AS INTEGER) = ?
-              AND CAST(sl.supplier_id AS INTEGER) IN (
-                SELECT suplierID FROM purchaseitem WHERE invoiceid = ? AND savedby = ?
-              )
-            ORDER BY sl.date ASC
-          `;
-
-          db.all(getHistoryQuery, [invoiceid, invoiceid, creatorId], (err, history) => {
-            if (err) return res.status(500).json({ success: false, message: "Server error" });
-            return res.status(200).json({
-              success: true,
-              data: history,
-              total_price,
-              paid_amount,
-            });
+          return res.status(200).json({
+            success: true,
+            data: history,
+            total_price,
+            paid_amount,
           });
-        }
-      );
-    });
+        });
+      }
+    );
   });
 };
 

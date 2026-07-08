@@ -29,6 +29,7 @@ const headers = [
 
 const PurchaseFoodwaste = () => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const token = localStorage.getItem("token");
   const [isOpen, setOpen] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
@@ -41,7 +42,6 @@ const PurchaseFoodwaste = () => {
   //all ingrident with price and stock Quantiity
   const [apiItems, setApiItems] = useState([]);
   const [userId, setUserId] = useState("");
-  const token = localStorage.getItem("token");
   const [items, setItems] = useState([
     {
       item: "",
@@ -142,7 +142,7 @@ const PurchaseFoodwaste = () => {
 
   const handleIngredientChange = (index, ingredientId) => {
     axios
-      .get(`${API_BASE_URL}/lprice/${ingredientId}`)
+      .get(`${API_BASE_URL}/lprice/${ingredientId}`, { headers: { Authorization: token } })
       .then((response) => {
         const data = response.data.data[0]; // Assuming the response is in this format
         const newItems = [...items];

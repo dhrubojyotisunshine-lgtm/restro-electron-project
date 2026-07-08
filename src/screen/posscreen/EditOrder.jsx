@@ -262,7 +262,7 @@ const EditOrder = () => {
 
   useEffect(() => {
     axios
-      .get(`${API_BASE_URL}/getOrderById/${id}`)
+      .get(`${API_BASE_URL}/getOrderById/${id}`, { headers: { Authorization: token } })
       .then((response) => {
         const orderDetails = response.data.orderDetails[0];
         const menuItems = response.data.menuItems;

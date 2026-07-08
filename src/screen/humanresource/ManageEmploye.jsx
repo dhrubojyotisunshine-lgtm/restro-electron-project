@@ -168,7 +168,7 @@ const ManageEmploye = () => {
   // duty type
   const getDutyType = async () => {
     await axios
-      .get(`${API_BASE_URL}/dutytype`)
+      .get(`${API_BASE_URL}/dutytype`, { headers: { Authorization: token } })
       .then((res) => {
         setDutyType(res.data.data);
         console.log("data recive  duty ak", dutyType);
@@ -210,7 +210,7 @@ const ManageEmploye = () => {
 
   const getrateType = async () => {
     try {
-      let res = await axios.get(`${API_BASE_URL}/ratetype`);
+      let res = await axios.get(`${API_BASE_URL}/ratetype`, { headers: { Authorization: token } });
       console.log(res.data);
       setRateType(res.data.data);
     } catch (error) {
@@ -220,7 +220,7 @@ const ManageEmploye = () => {
   // mstatus
   const getMstatus = async () => {
     try {
-      let res = await axios.get(`${API_BASE_URL}/mstatus`);
+      let res = await axios.get(`${API_BASE_URL}/mstatus`, { headers: { Authorization: token } });
       console.log(res.data);
       setMstatus(res.data.data);
     } catch (error) {
@@ -241,7 +241,7 @@ const ManageEmploye = () => {
 
   const getGender = async () => {
     try {
-      let res = await axios.get(`${API_BASE_URL}/gender`);
+      let res = await axios.get(`${API_BASE_URL}/gender`, { headers: { Authorization: token } });
       console.log(res.data);
       setGendar(res.data.data);
     } catch (error) {
@@ -300,7 +300,7 @@ const ManageEmploye = () => {
 
     setEditId(id);
 
-    axios.get(`${API_BASE_URL}/getemployeebyid/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/getemployeebyid/${id}`, { headers: { Authorization: token } }).then((response) => {
       if (response.data.success && response.data.data.length > 0) {
         const employeeData = response.data.data[0];
         setFormData({
@@ -321,7 +321,7 @@ const ManageEmploye = () => {
           division_id: employeeData.division_id || "", // Update according to actual data field
           pos_id: employeeData.pos_id || "",
           duty_type: employeeData.duty_type || "",
-          voluntary_termination: employeeData.voluntary_termination || "",
+          voluntary_termination: employeeData.voluntary_termination ?? "",
           home_email: employeeData.home_email || "",
           home_phone: employeeData.home_phone || "",
           emerg_contct: employeeData.emerg_contct || "",
@@ -345,7 +345,7 @@ const ManageEmploye = () => {
             : "",
           rate_type: employeeData.rate_type || "",
           rate: employeeData.rate || "",
-          pay_frequency: employeeData.frequency_name || "",
+          pay_frequency: employeeData.pay_frequency || "",
           pay_frequency_txt: employeeData.pay_frequency_txt || "",
         });
       }
@@ -356,7 +356,7 @@ const ManageEmploye = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     axios
-      .put(`${API_BASE_URL}/updateemployee/${editID}`, formData)
+      .put(`${API_BASE_URL}/updateemployee/${editID}`, formData, { headers: { Authorization: token } })
       .then((response) => {
         console.log("Employee data updated successfully:", response.data);
         toast.success("Employee data updated successfully");
@@ -394,7 +394,7 @@ const ManageEmploye = () => {
   };
   const DeleteUnit = (id) => {
     axios
-      .delete(`${API_BASE_URL}/deleteemployee/${id}`)
+      .delete(`${API_BASE_URL}/deleteemployee/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete Employee Sucessfully..");
@@ -414,7 +414,8 @@ const ManageEmploye = () => {
   const showEmployeeData = async (order_id) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/getemployeebyid/${order_id}`
+        `${API_BASE_URL}/getemployeebyid/${order_id}`,
+        { headers: { Authorization: token } }
       );
       setInvoiceData([response.data]);
       console.log("Invoice Data aaya: ", invoiceData);
@@ -1069,18 +1070,12 @@ autoTable(doc,{
                                 Voluntary Termination
                               </label>
                               <select
-                                value={
-                                  formData.voluntary_termination === 0
-                                    ? "No"
-                                    : formData.voluntary_termination === 1
-                                    ? "Yes"
-                                    : ""
-                                }
+                                value={formData.voluntary_termination}
                                 onChange={(e) =>
                                   setFormData({
                                     ...formData,
                                     voluntary_termination:
-                                      e.target.value === "No" ? 0 : 1,
+                                      e.target.value === "" ? "" : Number(e.target.value),
                                   })
                                 }
                                 name="voluntary_termination"

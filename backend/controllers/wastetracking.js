@@ -555,18 +555,26 @@ const getPackageFoodWasteDetails = async (req, res) => {
 
 const getTotalPrice = async (req, res) => {
   const { id } = req.params;
-  console.log(id);
-
-  // SQLite-compatible query to get the total quantity and total price
-  const query = `
-    SELECT SUM(quantity) AS totalquantity, 
-           SUM(totalprice) AS totalprice 
-    FROM purchase_details 
-    WHERE indredientid = ? 
-    GROUP BY indredientid
-  `;
+  const userId = req.id;
 
   try {
+    const createdBy = await getAuthorizedCreatedBy(userId);
+
+    if (!createdBy) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to access this data.",
+      });
+    }
+
+    const query = `
+      SELECT SUM(quantity) AS totalquantity,
+             SUM(totalprice) AS totalprice
+      FROM purchase_details
+      WHERE indredientid = ?
+      GROUP BY indredientid
+    `;
+
     const result = await dbQuery(query, [id]);
 
     if (result.length === 0) {
@@ -576,9 +584,12 @@ const getTotalPrice = async (req, res) => {
     const { totalquantity, totalprice } = result[0];
     const pricePerIngredient = totalprice / totalquantity;
 
-    // SQLite-compatible query to get stock quantity
-    const query2 = `SELECT stock_qty FROM ingredients WHERE ingredients.id = ?`;
-    const result1 = await dbQuery(query2, [id]);
+    const query2 = `SELECT stock_qty FROM ingredients WHERE id = ? AND created_by = ?`;
+    const result1 = await dbQuery(query2, [id, createdBy]);
+
+    if (result1.length === 0) {
+      return res.status(404).send("Ingredient not found");
+    }
 
     const total_stock = result1[0].stock_qty;
 
@@ -994,18 +1005,29 @@ const showItemsFoodWaste = async (req, res) => {
 
 const getalldetailsProductiondetails = async (req, res) => {
   const { foodid, pvarientid } = req.query;
+  const userId = req.id;
 
   try {
+    const createdBy = await getAuthorizedCreatedBy(userId);
+
+    if (!createdBy) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to access production details.",
+      });
+    }
+
     // Step 1: Fetch production details
     let foodVariantQuery = `
         SELECT foodid, pvarientid, ingredientid, qty AS productionqty
-        FROM production_details 
-        WHERE foodid = ? AND pvarientid = ?
+        FROM production_details
+        WHERE foodid = ? AND pvarientid = ? AND createdby = ?
       `;
 
     const productionDetails = await dbQuery(foodVariantQuery, [
       foodid,
       pvarientid,
+      createdBy,
     ]);
 
     if (!productionDetails || productionDetails.length === 0) {

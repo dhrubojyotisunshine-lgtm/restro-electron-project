@@ -263,6 +263,7 @@ const Nav = () => {
       submanuItems: [
         { title: "Common Setting", link: "/common-setting" },
         { title: "Sound Setting", link: "/sound-setting" },
+        { title: "My Subscription", link: "/my-subscription" },
         // { title: "Banner Setting", link: "/working" },
         // { title: "Menu Setting", link: "/working" },
         // { title: "SEO Setting", link: "/working" },
@@ -423,6 +424,19 @@ const Nav = () => {
             </div>
           );
         })}
+
+        {localStorage.getItem("subscriptionStatus") === "expired" && (
+          <div className={`mt-4 rounded-md bg-red-600 text-white text-xs p-3 ${!open && "hidden"}`}>
+            <p className="font-bold mb-1">⚠️ Subscription Expired</p>
+            <p className="mb-2">Renew your plan to keep using all features.</p>
+            <NavLink
+              to="/my-subscription"
+              className="underline font-semibold hover:text-red-200"
+            >
+              View Subscription →
+            </NavLink>
+          </div>
+        )}
 
         {isLogin ? (
           <li

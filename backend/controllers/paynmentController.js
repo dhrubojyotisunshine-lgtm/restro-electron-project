@@ -1,7 +1,13 @@
 const db = require("../utils/db");
 
-// const getPaymentMethods = (req, res) => {
-//   const sql = "SELECT *  FROM payment_method WHERE is_active = 1";
+const resolveCreatorId = (userId) =>
+  new Promise((resolve, reject) => {
+    db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+      if (err) return reject(err);
+      if (!row) return resolve(null);
+      resolve(Number(row.is_admin) === 1 ? userId : row.created_by);
+    });
+  });
 
 const getPaymentMethods = (req, res) => {
  const sql = "SELECT * FROM payment_method WHERE is_active = '1'";
@@ -15,14 +21,17 @@ const getPaymentMethods = (req, res) => {
   });
 }
 
-const makePayment = (req, res) => {
+const makePayment = async (req, res) => {
   const { order_id } = req.params;
   const { payment_method_id, paidAmount, discount, service_charge } = req.body;
 
-  console.log(req.body);
+  try {
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-  const checkOrderQuery = "SELECT * FROM customer_order WHERE order_id = ?";
-  db.get(checkOrderQuery, [order_id], (err, orderResult) => {
+    const checkOrderQuery = "SELECT * FROM customer_order WHERE order_id = ? AND created_by = ?";
+    db.get(checkOrderQuery, [order_id, creatorId], (err, orderResult) => {
     if (err) {
       console.error("Error checking customer_order:", err);
       return res
@@ -145,6 +154,10 @@ const makePayment = (req, res) => {
         });
     });
   });
+  } catch (err) {
+    console.error("Error in makePayment:", err);
+    return res.status(500).json({ success: false, message: "An error occurred" });
+  }
 };
 
 module.exports = { getPaymentMethods, makePayment };

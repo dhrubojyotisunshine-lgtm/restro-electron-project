@@ -4,6 +4,15 @@ const fs = require("fs");
 const path = require("path");
 const net = require("net");
 
+const resolveCreatorId = (userId) =>
+  new Promise((resolve, reject) => {
+    db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+      if (err) return reject(err);
+      if (!row) return resolve(null);
+      resolve(Number(row.is_admin) === 1 ? userId : row.created_by);
+    });
+  });
+
 async function sendToPrinter(printer, text) {
   // Windows printer
   if (printer.printer_type === "windows") {
@@ -643,8 +652,12 @@ const getTodayOrders = async (req, res) => {
   }
 };
 
-const getCategoryList = (req, res) => {
+const getCategoryList = async (req, res) => {
   try {
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
     const getCategoryListQuery = `
   SELECT
     parent.CategoryID AS parentCategoryID,
@@ -656,16 +669,17 @@ const getCategoryList = (req, res) => {
     child.CategoryIsActive AS childCategoryIsActive,
     child.parentid AS childParentID
   FROM item_category parent
-  LEFT JOIN item_category child 
+  LEFT JOIN item_category child
     ON child.parentid = parent.CategoryID
-  WHERE 
+  WHERE
     (parent.parentid = 0 OR parent.parentid = '' OR parent.parentid IS NULL)
     AND parent.CategoryIsActive = 1
     AND (child.CategoryIsActive = 1 OR child.CategoryID IS NULL)
+    AND parent.created_by = ?
   ORDER BY parent.CategoryID, child.CategoryID;
 `;
 
-    db.all(getCategoryListQuery, [], (err, results) => {
+    db.all(getCategoryListQuery, [creatorId], (err, results) => {
       if (err) {
         console.error("Error fetching category list:", err);
         return res.status(500).json({
@@ -1090,6 +1104,10 @@ const getQROrders = async (req, res) => {
 // allOrderList
 const allOrderList = async (req, res) => {
   try {
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
     const getAllOrderList = `
      SELECT
       co.*,
@@ -1118,12 +1136,11 @@ const allOrderList = async (req, res) => {
       bill b ON co.order_id = b.order_id
       LEFT JOIN
       shipping_method sm ON b.shipping_type = sm.ship_id
-      ORDER BY
-      co.order_id DESC;
-
+      WHERE co.created_by = ?
+      ORDER BY co.order_id DESC;
     `;
 
-    db.all(getAllOrderList, (err, result) => {
+    db.all(getAllOrderList, [creatorId], (err, result) => {
       if (err) {
         console.log(err);
         res.status(500).json({ success: false, message: "An error occurred" });
@@ -1148,7 +1165,10 @@ const getOrderById = async (req, res) => {
   }
 
   try {
-    // Query to fetch order details, customer info, waiter info, and bill details
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
     const getOrderDetailsQuery = `
           SELECT
               co.*,
@@ -1181,11 +1201,9 @@ const getOrderById = async (req, res) => {
               LEFT JOIN customer_info c ON co.customer_id = c.customer_id
               LEFT JOIN user w ON co.waiter_id = w.id
               LEFT JOIN bill b ON co.order_id = b.order_id
-              LEFT JOIN
-              shipping_method sm ON b.shipping_type = sm.ship_id
-              LEFT JOIN customer_type ct ON co.cutomertype = ct.customer_type_id 
-          WHERE
-              co.order_id = ?;
+              LEFT JOIN shipping_method sm ON b.shipping_type = sm.ship_id
+              LEFT JOIN customer_type ct ON co.cutomertype = ct.customer_type_id
+          WHERE co.order_id = ? AND co.created_by = ?;
       `;
 
     // Query to fetch menu items associated with the order
@@ -1208,7 +1226,7 @@ GROUP BY om.menu_id, om.varientid;
 
       `;
 
-    db.all(getOrderDetailsQuery, [order_id], (err, orderResult) => {
+    db.all(getOrderDetailsQuery, [order_id, creatorId], (err, orderResult) => {
       if (err) {
         console.log(err);
         return res.status(500).json({
@@ -1265,6 +1283,10 @@ GROUP BY om.menu_id, om.varientid;
 
 const getOngoingOrder = async (req, res) => {
   try {
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
     const getOnGoingOrdersQuery = `
       SELECT
         co.*,
@@ -1296,12 +1318,11 @@ const getOngoingOrder = async (req, res) => {
       WHERE
       co.orderacceptreject = 1
       AND co.order_status = 2
-        AND  b.bill_status = 0
-      ORDER BY
-        co.order_id DESC;
+      AND b.bill_status = 0
+      AND co.created_by = ?
+      ORDER BY co.order_id DESC;
     `;
-    // co.customerpaid = co.totalamount inclue into query when needed
-    db.all(getOnGoingOrdersQuery, (err, result) => {
+    db.all(getOnGoingOrdersQuery, [creatorId], (err, result) => {
       if (err) {
         console.log(err);
         res.status(500).json({ success: false, message: "An error occurred" });
@@ -1318,11 +1339,10 @@ const getOngoingOrder = async (req, res) => {
   }
 };
 
-const cancelorder = (req, res) => {
+const cancelorder = async (req, res) => {
   const { order_id } = req.params;
   const { anyreason } = req.body;
 
-  // Validate input
   if (!order_id || !anyreason) {
     return res.status(400).json({
       success: false,
@@ -1330,9 +1350,13 @@ const cancelorder = (req, res) => {
     });
   }
 
-  // Step 1: Get table_no based on order_id
-  const getTableQuery = `SELECT table_no FROM customer_order WHERE order_id = ?`;
-  db.all(getTableQuery, [order_id], (err, result) => {
+  try {
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
+    const getTableQuery = `SELECT table_no FROM customer_order WHERE order_id = ? AND created_by = ?`;
+    db.all(getTableQuery, [order_id, creatorId], (err, result) => {
     if (err) {
       console.error("Error fetching table_no:", err);
       return res.status(500).json({
@@ -1391,6 +1415,10 @@ const cancelorder = (req, res) => {
       });
     });
   });
+  } catch (err) {
+    console.error("Error in cancelorder:", err);
+    res.status(500).json({ success: false, message: "An error occurred" });
+  }
 };
 
 const cancelOrdersList = async (req, res) => {

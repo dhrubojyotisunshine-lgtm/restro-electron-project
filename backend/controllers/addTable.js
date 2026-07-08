@@ -1,6 +1,15 @@
 const db = require("../utils/db");
 const { v4: uuidv4 } = require("uuid");
 
+const resolveCreatorId = (userId) =>
+  new Promise((resolve, reject) => {
+    db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+      if (err) return reject(err);
+      if (!row) return resolve(null);
+      resolve(Number(row.is_admin) === 1 ? userId : row.created_by);
+    });
+  });
+
 // const createTable = async (req, res) => {
 //   try {
 //     const userId = req.id;
@@ -319,8 +328,11 @@ const getTables = async (req, res) => {
 
 const getBookedTable = async (req, res) => {
   try {
+    const creatorId = await resolveCreatorId(req.id);
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
+
     const query = `
-      SELECT 
+      SELECT
         tableid,
         tablename,
         person_capicity,
@@ -328,25 +340,15 @@ const getBookedTable = async (req, res) => {
         floor,
         (person_capicity - occupied_seats) AS remaining
       FROM rest_table
-      WHERE occupied_seats >= person_capicity
+      WHERE occupied_seats >= person_capicity AND created_by = ?
     `;
 
-    db.all(query, (err, results) => {
+    db.all(query, [creatorId], (err, results) => {
       if (err) {
         console.error(err);
-        return res.status(500).json({
-          success: false,
-          message: "An error occurred while retrieving booked tables",
-        });
+        return res.status(500).json({ success: false, message: "An error occurred while retrieving booked tables" });
       }
-
-      res.status(200).json({
-        success: true,
-        data: results.map((t) => ({
-          ...t,
-          status: "booked",
-        })),
-      });
+      res.status(200).json({ success: true, data: results.map((t) => ({ ...t, status: "booked" })) });
     });
   } catch (error) {
     console.error(error);
@@ -356,8 +358,11 @@ const getBookedTable = async (req, res) => {
 
 const getunBookedTable = async (req, res) => {
   try {
+    const creatorId = await resolveCreatorId(req.id);
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
+
     const query = `
-      SELECT 
+      SELECT
         tableid,
         tablename,
         person_capicity,
@@ -365,25 +370,15 @@ const getunBookedTable = async (req, res) => {
         floor,
         (person_capicity - occupied_seats) AS remaining
       FROM rest_table
-      WHERE occupied_seats = 0
+      WHERE occupied_seats = 0 AND created_by = ?
     `;
 
-    db.all(query, (err, results) => {
+    db.all(query, [creatorId], (err, results) => {
       if (err) {
         console.error(err);
-        return res.status(500).json({
-          success: false,
-          message: "An error occurred while retrieving free tables",
-        });
+        return res.status(500).json({ success: false, message: "An error occurred while retrieving free tables" });
       }
-
-      res.status(200).json({
-        success: true,
-        data: results.map((t) => ({
-          ...t,
-          status: "free",
-        })),
-      });
+      res.status(200).json({ success: true, data: results.map((t) => ({ ...t, status: "free" })) });
     });
   } catch (error) {
     console.error(error);
@@ -429,38 +424,40 @@ const getPartialTables = async (req, res) => {
   }
 };
 const cleartable = async (req, res) => {
-  const tableId = req.params.tableId;
+  try {
+    const tableId = req.params.tableId;
+    const creatorId = await resolveCreatorId(req.id);
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
 
-  const query = `
-    UPDATE rest_table 
-    SET occupied_seats = 0, status = 'free'
-    WHERE tableid = ?
-  `;
-
-  db.run(query, [tableId], (err) => {
-    if (err) return res.status(500).json({ success: false });
-
-    res.json({ success: true, message: "Table cleared" });
-  });
+    db.run(
+      "UPDATE rest_table SET occupied_seats = 0, status = 'free' WHERE tableid = ? AND created_by = ?",
+      [tableId, creatorId],
+      (err) => {
+        if (err) return res.status(500).json({ success: false });
+        res.json({ success: true, message: "Table cleared" });
+      }
+    );
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 };
 
 const deleteTable = async (req, res) => {
   try {
-    const tableId = req.params.id; // Assuming the table ID is passed as a URL parameter
+    const tableId = req.params.id;
+    const creatorId = await resolveCreatorId(req.id);
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
 
-    const deleteTableQuery = `
-      DELETE FROM rest_table WHERE tableid = ?
-    `;
-
-    db.run(deleteTableQuery, [tableId], (err, result) => {
+    db.run("DELETE FROM rest_table WHERE tableid = ? AND created_by = ?", [tableId, creatorId], function (err) {
       if (err) {
         console.log(err);
-        res.status(500).json({ success: false, message: "An error occurred" });
-      } else {
-        res
-          .status(200)
-          .json({ success: true, message: "Table deleted successfully" });
+        return res.status(500).json({ success: false, message: "An error occurred" });
       }
+      if (this.changes === 0) {
+        return res.status(404).json({ success: false, message: "Table not found" });
+      }
+      res.status(200).json({ success: true, message: "Table deleted successfully" });
     });
   } catch (error) {
     res.status(500).json({ error: "An error occurred" });
@@ -470,45 +467,29 @@ const deleteTable = async (req, res) => {
 const getTableById = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: "Table ID is required" });
 
-    if (!id) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Table ID is required" });
-    }
+    const creatorId = await resolveCreatorId(req.id);
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
 
-    const getTableByIdQuery = `
-      SELECT tableid, tablename, person_capicity, status,floor
-      FROM rest_table
-      WHERE tableid = ?
-    `;
-
-    db.all(getTableByIdQuery, [id], (err, result) => {
-      if (err) {
-        console.log(err);
-        return res.status(500).json({
-          success: false,
-          message: "An error occurred while retrieving the table",
+    db.get(
+      "SELECT tableid, tablename, person_capicity, status, floor FROM rest_table WHERE tableid = ? AND created_by = ?",
+      [id, creatorId],
+      (err, result) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ success: false, message: "An error occurred while retrieving the table" });
+        }
+        if (!result) {
+          return res.status(404).json({ success: false, message: "Table not found" });
+        }
+        res.status(200).json({
+          success: true,
+          data: { ...result, status: result.status === 1 ? "booked" : "free" },
+          message: "Table fetched successfully",
         });
       }
-
-      if (result.length === 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Table not found" });
-      }
-
-      const table = {
-        ...result[0],
-        status: result[0].status === 1 ? "booked" : "free",
-      };
-
-      res.status(200).json({
-        success: true,
-        data: table,
-        message: "Table fetched successfully",
-      });
-    });
+    );
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "An error occurred" });
@@ -521,64 +502,34 @@ const updateTable = async (req, res) => {
     const { tableid } = req.params;
     const { tablename, person_capicity, floorName } = req.body;
 
-    // 🔹 Fetch existing data
-    const fetchSql = `SELECT * FROM rest_table WHERE tableid = ?`;
+    const creatorId = await resolveCreatorId(req.id);
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
 
-    db.get(fetchSql, [tableid], (err, current) => {
+    db.get("SELECT * FROM rest_table WHERE tableid = ? AND created_by = ?", [tableid, creatorId], (err, current) => {
       if (err) {
         console.error(err);
         return res.status(500).json({ success: false });
       }
-
       if (!current) {
-        return res.status(404).json({
-          success: false,
-          message: "Table not found",
-        });
+        return res.status(404).json({ success: false, message: "Table not found" });
       }
 
-      // 🔹 Merge data
-      const newCapacity =
-        person_capicity !== undefined
-          ? person_capicity
-          : current.person_capicity;
-
+      const newCapacity = person_capicity !== undefined ? person_capicity : current.person_capicity;
       const newOccupied = current.occupied_seats || 0;
 
-      // 🔥 AUTO STATUS CALCULATION
       let newStatus = "free";
       if (newOccupied >= newCapacity) newStatus = "booked";
       else if (newOccupied > 0) newStatus = "partial";
 
-      const updateSql = `
-        UPDATE rest_table 
-        SET 
-          tablename = ?, 
-          person_capicity = ?, 
-          floor = ?, 
-          status = ?
-        WHERE tableid = ?
-      `;
-
       db.run(
-        updateSql,
-        [
-          tablename ?? current.tablename,
-          newCapacity,
-          floorName ?? current.floor,
-          newStatus, // ✅ always correct
-          tableid,
-        ],
+        "UPDATE rest_table SET tablename = ?, person_capicity = ?, floor = ?, status = ? WHERE tableid = ? AND created_by = ?",
+        [tablename ?? current.tablename, newCapacity, floorName ?? current.floor, newStatus, tableid, creatorId],
         function (err) {
           if (err) {
             console.error(err);
             return res.status(500).json({ success: false });
           }
-
-          return res.json({
-            success: true,
-            message: "Table updated successfully",
-          });
+          return res.json({ success: true, message: "Table updated successfully" });
         },
       );
     });

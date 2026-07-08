@@ -11,6 +11,7 @@ const SplitPaynmentModal = ({
 }) => {
   if (!isOpen) return null;
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const token = localStorage.getItem("token");
   const [selectedMethod, setSelectedMethod] = useState(1);
   const [paidAmount, setPaidAmount] = useState(0);
   const [discount, setDiscount] = useState(0);
@@ -72,7 +73,7 @@ const SplitPaynmentModal = ({
     console.log(formData)
 
     axios
-      .post(`${API_BASE_URL}/mergepayment`, formData)
+      .post(`${API_BASE_URL}/mergepayment`, formData, { headers: { Authorization: token } })
       .then((response) => {
         console.log(response.data);
         refreshOrderList()

@@ -10,13 +10,12 @@ router.get("/watersalereport",verifyToken, reportController.getWaiterTotalAmount
 router.get("/servicechargereport",verifyToken,reportController.serviceChargeReport)
 router.get("/commission",verifyToken, reportController.showDataCommsion)
 router.get("/casherreport",verifyToken,reportController.orderCasherReport)
-router.get("/tablebysale",verifyToken,reportController.getTableBySale)
 router.get("/salereportfilter",verifyToken,reportController.salesReportFiltering)
 router.get("/salebydate",verifyToken,reportController.salesByDate)
 router.get("/itemsalereport",verifyToken,reportController.itemSalesReport)
 router.get("/registerreport",verifyToken,reportController.getCashRegister)
-router.get("/registeruser",reportController.getCashUser)
-router.get("/registerview",reportController.getCashRegisterView)
+router.get("/registeruser",verifyToken,reportController.getCashUser)
+router.get("/registerview",verifyToken,reportController.getCashRegisterView)
 router.get("/purchasereport",verifyToken,reportController.purchaseReport )
 router.get("/cashregisters/:id",verifyToken,reportController.getCashRegisterView);
 router.get('/foodstockreport',verifyToken, reportController.productwise);

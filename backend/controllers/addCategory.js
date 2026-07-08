@@ -261,19 +261,32 @@ const getCategory = (req, res) => {
 
 const deletCategory = (req, res) => {
   const id = req.params.id;
+  const userId = req.id;
 
+  const checkUserQuery = "SELECT is_admin, created_by FROM user WHERE id = ?";
+  db.get(checkUserQuery, [userId], (userErr, userData) => {
+    if (userErr) return res.status(500).json({ error: "Internal Server Error" });
+    if (!userData) return res.status(404).json({ error: "User not found" });
+    const creatorId = Number(userData.is_admin) === 1 ? userId : userData.created_by;
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
+
+    doCategoryDelete(id, creatorId, res);
+  });
+};
+
+const doCategoryDelete = (id, creatorId, res) => {
   const fetchImageSql =
-    "SELECT CategoryImage FROM item_category WHERE CategoryID = ?";
+    "SELECT CategoryImage FROM item_category WHERE CategoryID = ? AND UserIDInserted = ?";
   const deleteItemRelatedCategory =
     "DELETE FROM item_foods WHERE CategoryID = ?";
   const deleteRelatedItemVariant =
     "DELETE FROM variant WHERE menuID IN (SELECT ProductsID FROM item_foods WHERE CategoryID = ?)";
   const deleteRelatedAddon =
     "DELETE FROM menu_add_on WHERE menu_id IN (SELECT ProductsID FROM item_foods WHERE CategoryID = ?)";
-  const deleteCategorySql = "DELETE FROM item_category WHERE CategoryID = ?";
+  const deleteCategorySql = "DELETE FROM item_category WHERE CategoryID = ? AND UserIDInserted = ?";
 
-  // Fetch image associated with category
-  db.get(fetchImageSql, [id], (fetchErr, fetchData) => {
+  // Fetch image associated with category (scoped to owner)
+  db.get(fetchImageSql, [id, creatorId], (fetchErr, fetchData) => {
     if (fetchErr) {
       console.error("Database fetch error:", fetchErr);
       return res.status(500).json({ error: "Internal Server Error" });
@@ -307,7 +320,7 @@ const deletCategory = (req, res) => {
           }
 
           // Delete the category itself
-          db.run(deleteCategorySql, [id], function (deleteErr) {
+          db.run(deleteCategorySql, [id, creatorId], function (deleteErr) {
             if (deleteErr) {
               console.error("Error deleting category:", deleteErr);
               return res.status(500).json({ error: "Internal Server Error" });
@@ -564,37 +577,36 @@ const updateCategory = (req, res) => {
 
 const getCategoryById = (req, res) => {
   const categoryId = req.params.id;
+  const userId = req.id;
 
-  const sql = `
-    SELECT
-      i.*,
-      p.Name AS parent_name,
-      p.CategoryID AS parent_id
-    FROM item_category i
-    LEFT JOIN item_category p ON i.parentid = p.CategoryID
-    WHERE i.CategoryID = ?
-  `;
+  const checkUserQuery = "SELECT is_admin, created_by FROM user WHERE id = ?";
+  db.get(checkUserQuery, [userId], (userErr, userData) => {
+    if (userErr) return res.status(500).json({ success: false, message: "Internal Server Error" });
+    if (!userData) return res.status(404).json({ success: false, message: "User not found" });
+    const creatorId = Number(userData.is_admin) === 1 ? userId : userData.created_by;
+    if (!creatorId) return res.status(403).json({ success: false, message: "You are not authorized" });
 
-  // SQLite uses db.get for single row
-  db.get(sql, [categoryId], (err, data) => {
-    if (err) {
-      console.error("Database query error:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Internal Server Error" });
-    }
+    const sql = `
+      SELECT
+        i.*,
+        p.Name AS parent_name,
+        p.CategoryID AS parent_id
+      FROM item_category i
+      LEFT JOIN item_category p ON i.parentid = p.CategoryID
+      WHERE i.CategoryID = ? AND i.UserIDInserted = ?
+    `;
 
-    if (!data) {
-      return res.status(404).json({
-        success: false,
-        message: "Category not found or not accessible.",
-      });
-    }
-
-    // parent_name set karna agar parentid 0 hai
-    data.parent_name = data.parentid === 0 ? "No Parent" : data.parent_name;
-
-    return res.status(200).json({ success: true, data });
+    db.get(sql, [categoryId, creatorId], (err, data) => {
+      if (err) {
+        console.error("Database query error:", err);
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+      }
+      if (!data) {
+        return res.status(404).json({ success: false, message: "Category not found or not accessible." });
+      }
+      data.parent_name = data.parentid === 0 ? "No Parent" : data.parent_name;
+      return res.status(200).json({ success: true, data });
+    });
   });
 };
 

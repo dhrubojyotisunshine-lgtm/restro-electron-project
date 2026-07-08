@@ -140,7 +140,7 @@ const[createdby,setCreatedby]=useState("")
     setEditId(id);
     setIsModalOpen2(true);
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/department/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/department/${id}`, { headers: { Authorization: token } }).then((response) => {
       console.log("data recive", response.data);
 
       setEditName(response.data.data.department_name);
@@ -163,7 +163,7 @@ const[createdby,setCreatedby]=useState("")
       await axios.put(`${API_BASE_URL}/department/${editId}`, {
         created_by,
         department_name,
-      });
+      }, { headers: { Authorization: token } });
       toast.success("Updated Successfully!");
       getDepartment();
       setIsModalOpen2(false); // Close the modal after submission
@@ -193,7 +193,7 @@ const[createdby,setCreatedby]=useState("")
   };
   const DeleteDepartment = (id) => {
     axios
-      .delete(`${API_BASE_URL}/deletedepartment/${id}`)
+      .delete(`${API_BASE_URL}/deletedepartment/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete Department sucessfully..");
@@ -209,7 +209,7 @@ const[createdby,setCreatedby]=useState("")
 
   const fetchData = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/department`);
+      const response = await axios.get(`${API_BASE_URL}/department`, { headers: { Authorization: token } });
       return response.data.data; // Assuming the data you need is in `response.data.data`
     } catch (error) {
       console.error("Error fetching data:", error);

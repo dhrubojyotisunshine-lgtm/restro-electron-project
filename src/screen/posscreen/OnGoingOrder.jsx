@@ -162,7 +162,7 @@ const OnGoingOrder = () => {
 
   const showPaynment = (order_id) => {
     axios
-      .get(`${API_BASE_URL}/getOrderById/${order_id}`)
+      .get(`${API_BASE_URL}/getOrderById/${order_id}`, { headers: { Authorization: token } })
       .then((response) => {
         console.log(response.data);
         setPaymentData(response.data);
@@ -249,7 +249,7 @@ const OnGoingOrder = () => {
         .post(
           `${API_BASE_URL}/cancelAllOrder/${order_id}`,
           { anyreason },
-          { headers: { "Content-Type": "application/json" } },
+          { headers: { "Content-Type": "application/json", Authorization: token } },
         )
         .then((response) => {
           console.log(response.data);
@@ -317,7 +317,7 @@ const OnGoingOrder = () => {
 
   const showShplitData = (order_id, customer_id) => {
     axios
-      .get(`${API_BASE_URL}/splitorderdata/${order_id}`)
+      .get(`${API_BASE_URL}/splitorderdata/${order_id}`, { headers: { Authorization: token } })
       .then((response) => {
         const menuItems = response.data.menuItems;
         setSplitData(menuItems); // Update state only when there are multiple items

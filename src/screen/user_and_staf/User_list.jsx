@@ -138,7 +138,7 @@ const handleDeleteClick = (id) => {
   };
   const DeleteUnit = (id) => {
     axios
-      .delete(`${API_BASE_URL}/deleteuser/${id}`)
+      .delete(`${API_BASE_URL}/deleteuser/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("delete user sucessfully..")
@@ -183,7 +183,7 @@ const handleEditClick = (id) => {
   setEditId(id);
   setIsModalOpen(true);
   // Fetch data for the given ID
-  axios.get(`${API_BASE_URL}/userbyid/${id}`).then((response) => {
+  axios.get(`${API_BASE_URL}/userbyid/${id}`, { headers: { Authorization: token } }).then((response) => {
     setFormData2({
       firstname: response.data.data.firstname,
       lastname: response.data.data.lastname,
@@ -226,6 +226,7 @@ const handleSubmit2 = async () => {
     const response = await axios.put(`${API_BASE_URL}/updateuser/${editId}`, data, {
       headers: {
         "Content-Type": "multipart/form-data",
+        Authorization: token,
       },
     });
 

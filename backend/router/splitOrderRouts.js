@@ -1,15 +1,10 @@
-const express= require ("express")
+const express = require("express");
 const router = express.Router();
+const splitcontroller = require("../controllers/splitOrder");
+const verifyToken = require("../middleware/authicantejwt");
 
-const splitcontroller= require("../controllers/splitOrder");
+router.get("/splitorderdata/:id", verifyToken, splitcontroller.showsplitorder);
+router.post("/mergepayment", verifyToken, splitcontroller.mergeMakePayment);
+router.post("/paysplit", verifyToken, splitcontroller.paymentSplitOrder);
 
-router.get ("/splitorderdata/:id",splitcontroller.showsplitorder)
-// merger order route api paynment
-router.post("/mergepayment", splitcontroller.mergeMakePayment);
-
-
-router.post('/paysplit',splitcontroller.paymentSplitOrder)
-
-
-
-module.exports=router
+module.exports = router;

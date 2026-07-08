@@ -178,6 +178,7 @@ const handleSearch = (e) => {
     try {
       const response = await axios.get(`${API_BASE_URL}/variantdata`, {
         params: { foodid },
+        headers: { Authorization: token },
       });
       console.log("Variants received: ", response.data.data);
       setVariant(response.data.data); // Update variant list based on food
@@ -216,7 +217,8 @@ const handleSearch = (e) => {
     if (!ingredientId) return;
     try {
       const res = await axios.get(
-        `${API_BASE_URL}/priceperitem/${ingredientId}`
+        `${API_BASE_URL}/priceperitem/${ingredientId}`,
+        { headers: { Authorization: token } }
       );
       const newPrice = res.data.data[0].Price;
       // Update the unit price and total price
@@ -255,7 +257,8 @@ const handleSearch = (e) => {
     setIsModalOpen(true); // Open the modal
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/productiondetail/${foodid}/${pvarientid}`
+        `${API_BASE_URL}/productiondetail/${foodid}/${pvarientid}`,
+        { headers: { Authorization: token } }
       );
       const foodDetails = response.data.data.fooddetails[0]; // Directly access the first element
       const itemDetails = response.data.data.itemdetails; // This is an array, not a single object
@@ -352,7 +355,8 @@ const returnview = async (foodid, pvarientid) => {
   setvieweDataModal(true); // Open the modal
   try {
     const response = await axios.get(
-      `${API_BASE_URL}/viewproductiondetail/${foodid}/${pvarientid}`
+      `${API_BASE_URL}/viewproductiondetail/${foodid}/${pvarientid}`,
+      { headers: { Authorization: token } }
     );
   setViewdata(response.data.data)
     
@@ -508,7 +512,7 @@ const handleDeleteClick = (foodid, pvarientid) => {
 
 const deleteCategory = ({ foodid, pvarientid }) => {
   axios
-    .delete(`${API_BASE_URL}/productiondetail/${foodid}/${pvarientid}`)
+    .delete(`${API_BASE_URL}/productiondetail/${foodid}/${pvarientid}`, { headers: { Authorization: token } })
     .then((res) => {
       console.log(res.data);
       fetchData(); // Refresh the data list.

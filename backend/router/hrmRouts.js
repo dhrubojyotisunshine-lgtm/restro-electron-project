@@ -25,19 +25,19 @@ const verifyToken = require("../middleware/authicantejwt");
 
 router.get("/employedata", verifyToken, hrmcontroller.getAllEmployeeHistories);
 router.get("/designation", verifyToken, hrmcontroller.getAllPositions);
-router.get("/designation/:id", hrmcontroller.getPositionById);
-router.put("/designation/:id", hrmcontroller.updatePosition);
-router.delete("/designation/:id", hrmcontroller.deletePosition);
+router.get("/designation/:id", verifyToken, hrmcontroller.getPositionById);
+router.put("/designation/:id", verifyToken, hrmcontroller.updatePosition);
+router.delete("/designation/:id", verifyToken, hrmcontroller.deletePosition);
 router.post("/createdesignation", verifyToken, hrmcontroller.createDesignation);
 // get all devision
 
-router.get("/dutytype", hrmcontroller.getALlDutyTypes);
-router.get("/frequencytype", hrmcontroller.getAllFrequencyType);
-router.get("/ratetype", hrmcontroller.getAllRateTypes);
-router.get("/mstatus", hrmcontroller.maritalSaatus);
-router.get("/gender", hrmcontroller.getGender);
+router.get("/dutytype", verifyToken, hrmcontroller.getALlDutyTypes);
+router.get("/frequencytype", verifyToken, hrmcontroller.getAllFrequencyType);
+router.get("/ratetype", verifyToken, hrmcontroller.getAllRateTypes);
+router.get("/mstatus", verifyToken, hrmcontroller.maritalSaatus);
+router.get("/gender", verifyToken, hrmcontroller.getGender);
 // delete employee
-router.delete("/deleteemployee/:id", hrmcontroller.deleteEmployee);
+router.delete("/deleteemployee/:id", verifyToken, hrmcontroller.deleteEmployee);
 router.post(
   "/createemployee",
   upload.single("picture"),
@@ -45,25 +45,26 @@ router.post(
   hrmcontroller.createEmployeeHistory,
 );
 //get by id
-router.get("/getemployeebyid/:id", hrmcontroller.getemployeeBYID);
+router.get("/getemployeebyid/:id", verifyToken, hrmcontroller.getemployeeBYID);
 
 router.put(
   "/updateemployee/:id",
   upload.single("picture"),
+  verifyToken,
   hrmcontroller.updateEmployeeHistory,
 );
 // Department
-router.put("/department/:id", hrmcontroller.updateDepartment);
-router.get("/department/:id", hrmcontroller.getDepartmentById);
+router.put("/department/:id", verifyToken, hrmcontroller.updateDepartment);
+router.get("/department/:id", verifyToken, hrmcontroller.getDepartmentById);
 router.get("/department", verifyToken, hrmcontroller.getDepartments);
 router.post("/adddepartment", verifyToken, hrmcontroller.addDepartment);
-router.delete("/deletedepartment/:id", hrmcontroller.deleteDepartment);
+router.delete("/deletedepartment/:id", verifyToken, hrmcontroller.deleteDepartment);
 
 // division
 router.get("/division", verifyToken, hrmcontroller.getAllDivision);
 router.get("/dipartmentlist", verifyToken, hrmcontroller.departmentDropdown);
-router.get("/getdivisionbyid/:id", hrmcontroller.getALldivisionbyId);
+router.get("/getdivisionbyid/:id", verifyToken, hrmcontroller.getALldivisionbyId);
 router.post("/createdivision", verifyToken, hrmcontroller.createDivison);
-router.delete("/deletedivision/:id", hrmcontroller.deleteDivison);
-router.put("/updatedivision/:id", hrmcontroller.updateDivison);
+router.delete("/deletedivision/:id", verifyToken, hrmcontroller.deleteDivison);
+router.put("/updatedivision/:id", verifyToken, hrmcontroller.updateDivison);
 module.exports = router;

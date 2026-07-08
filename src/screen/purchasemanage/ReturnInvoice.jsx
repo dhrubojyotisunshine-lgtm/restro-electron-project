@@ -97,7 +97,7 @@ const ReturnInvoice = () => {
 
   const returnview = (id) => {
     axios
-      .get(`${API_BASE_URL}/purchasereturns/${id}`)
+      .get(`${API_BASE_URL}/purchasereturns/${id}`, { headers: { Authorization: token } })
       .then((response) => {
         setViewReturn([response.data]);
         setvieweDataModal(true);

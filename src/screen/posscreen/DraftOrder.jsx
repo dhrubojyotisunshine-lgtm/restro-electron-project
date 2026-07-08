@@ -81,8 +81,8 @@ const DraftOrder = ({ isOpen, onClose }) => {
       axios
       .post(
         `${API_BASE_URL}/cancelOrder/${order_id}`,
-        { anyreason }, 
-        { headers: { "Content-Type": "application/json" } } 
+        { anyreason },
+        { headers: { "Content-Type": "application/json", Authorization: token } }
       )
       .then((response) => {
         console.log(response.data);

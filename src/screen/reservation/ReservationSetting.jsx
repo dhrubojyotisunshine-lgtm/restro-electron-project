@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
+import { AuthContext } from "../../store/AuthContext";
 import Nav from "../../components/Nav";
 import Hamburger from "hamburger-react";
 import { IoMdNotifications, IoIosAddCircleOutline } from "react-icons/io";
@@ -12,6 +13,7 @@ import { toast } from "react-toastify";
 import useFullScreen from "../../components/useFullScreen";
 const ReservationSetting = () => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const { token } = useContext(AuthContext);
   const [isOpen, setOpen] = useState(true);
   
 const { isFullScreen, toggleFullScreen } = useFullScreen();
@@ -28,7 +30,7 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
   const submitSetting = (e) => {
     e.preventDefault();
   
-    axios.put(`${API_BASE_URL}/setting/2`, formData)
+    axios.put(`${API_BASE_URL}/setting/2`, formData, { headers: { Authorization: token } })
       .then(() => {
         toast.success("Updated reservation setting successfully!");
         setFormData({

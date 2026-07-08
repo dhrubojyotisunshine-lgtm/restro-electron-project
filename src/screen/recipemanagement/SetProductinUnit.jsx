@@ -89,6 +89,7 @@ const SetProductionUnit = () => {
     try {
       const res = await axios.get(
         `${API_BASE_URL}/priceperitem/${ingredientId}`,
+        { headers: { Authorization: token } }
       );
       const newPrice = res.data.data[0].Price;
       console.log("price aaaya ", newPrice);

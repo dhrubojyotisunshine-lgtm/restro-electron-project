@@ -23,7 +23,7 @@ router.get(
   wastetrackingcontroller.getPackageFoodWasteDetails,
 );
 // price accourding to incrident
-router.get("/lprice/:id", wastetrackingcontroller.getTotalPrice);
+router.get("/lprice/:id", verifyToken, wastetrackingcontroller.getTotalPrice);
 router.post(
   "/foodwaste",
   auth,
@@ -40,6 +40,7 @@ router.get(
 // get price accourding food name and variant
 router.get(
   "/getlostprice",
+  verifyToken,
   wastetrackingcontroller.getalldetailsProductiondetails,
 );
 // post

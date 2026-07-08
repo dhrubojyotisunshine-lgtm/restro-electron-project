@@ -277,6 +277,7 @@ const PurchaseItem = () => {
         {
           headers: {
             "Content-Type": "application/json",
+            Authorization: token,
           },
         }
       );
@@ -341,7 +342,7 @@ const PurchaseItem = () => {
       };
 
       await axios.put(`${API_BASE_URL}/updatedata/${editId}`, requestData, {
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: token },
       });
 
       toast.success("Payment updated successfully!");
@@ -400,7 +401,7 @@ const PurchaseItem = () => {
   const handleEditClick = (reserveid) => {
     setEditId(reserveid);
 
-    axios.get(`${API_BASE_URL}/getupdate/${reserveid}`).then((response) => {
+    axios.get(`${API_BASE_URL}/getupdate/${reserveid}`, { headers: { Authorization: token } }).then((response) => {
       console.log("data", response);
       const data = response.data.data;
       console.log("Fetched data from API:", data);
@@ -1261,8 +1262,9 @@ const PurchaseItem = () => {
                                 type="number"
                                 name="paid_amount"
                                 value={purchaseDetails.paid_amount}
-                                onChange={handlePurchaseDetailChange}
-                                className="block w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-1 focus:ring-[#4CBBA1] focus:border-[#4CBBA1]"
+                                readOnly
+                                title="Paid amount can only be changed via 'Pay Remaining'"
+                                className="block w-full p-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
                               />
                               {errors.paid_amount && (
                                 <p className="text-red-500 text-xs">

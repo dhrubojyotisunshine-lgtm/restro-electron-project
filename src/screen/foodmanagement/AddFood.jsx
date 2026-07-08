@@ -423,7 +423,7 @@ const AddFood = () => {
         `${API_BASE_URL}/bulk-upload-food`,
         formData,
         {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: { "Content-Type": "multipart/form-data", Authorization: token },
         },
       );
 

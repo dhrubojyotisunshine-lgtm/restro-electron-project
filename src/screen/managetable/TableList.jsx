@@ -205,7 +205,7 @@ const submitTableData = (e) => {
     setEditId(id);
     setIsModalOpen(true);
     // Fetch data for the given ID
-    axios.get(`${API_BASE_URL}/table/${id}`).then((response) => {
+    axios.get(`${API_BASE_URL}/table/${id}`, { headers: { Authorization: token } }).then((response) => {
       setFormData2({
         tablename: response.data.data.tablename,
         person_capicity: response.data.data.person_capicity,
@@ -240,7 +240,7 @@ const submitTableData = (e) => {
   }
 
   axios
-    .put(`${API_BASE_URL}/updatetable/${editId}`, formData2)
+    .put(`${API_BASE_URL}/updatetable/${editId}`, formData2, { headers: { Authorization: token } })
     .then(() => {
       toast.success("Table updated successfully!");
       GetTableData();
@@ -340,7 +340,7 @@ const handleSearch = (e) => {
   };
   const DeleteUnit = (id) => {
     axios
-      .delete(`${API_BASE_URL}/deletetable/${id}`)
+      .delete(`${API_BASE_URL}/deletetable/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete table sucessfully..");
@@ -369,7 +369,7 @@ const handleSearch = (e) => {
   };
   const DeleteUnit2 = (id) => {
     axios
-      .delete(`${API_BASE_URL}/deletefloors/${id}`)
+      .delete(`${API_BASE_URL}/deletefloors/${id}`, { headers: { Authorization: token } })
       .then((res) => {
         console.log("Data Deleted");
         toast.success("Delete Floor sucessfully..");

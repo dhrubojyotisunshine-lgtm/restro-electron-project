@@ -37,16 +37,8 @@ export const InvoiceDialogBox2 = React.forwardRef((props, ref) => {
     const num = parseFloat(amount);
     return isNaN(num) ? "0.00" : num.toFixed(2);
   };
-  const logoUrls = data.map((val) => {
-   
-      return `${VITE_IMG_URL}${val.logo}`; // Correctly concatenate APP_URL with val.logo
- 
-  });
-  const logoUrls2 = data.map((val) => {
-   
-    return `${VITE_IMG_URL}${val.logo_footer}`; // Correctly concatenate APP_URL with val.logo
-
-});
+  const logoUrls = (data || []).map((val) => `${VITE_IMG_URL}${val.logo}`);
+  const logoUrls2 = (data || []).map((val) => `${VITE_IMG_URL}${val.logo_footer}`);
 
 
 

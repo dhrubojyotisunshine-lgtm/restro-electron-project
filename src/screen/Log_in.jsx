@@ -224,8 +224,8 @@ const Log_in = () => {
 
       // ✅ 5. Redirect logic
       if (planExpired || subscriptionStatus === "expired") {
-        window.location.href =
-          "https://krayon.softwarestesting.co.in/my-subscription";
+        toast.error("Your subscription has expired. Please renew your plan to continue.");
+        navigate("/my-subscription", { replace: true });
       } else if (superAdmin && websitelink) {
         window.location.href = websitelink;
       } else {

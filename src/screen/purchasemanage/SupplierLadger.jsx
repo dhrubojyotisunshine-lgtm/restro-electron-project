@@ -38,10 +38,11 @@ const {token}=useContext(AuthContext)
     try {
       const response = await axios.get(`${API_BASE_URL}/supplierledger`, {
         params: {
-          supplier_id: selectSupplier, // Ensure this value is set properly
-          startDate: startData, // Start date for filtering
-          endDate: endDate, // End date for filtering
+          supplier_id: selectSupplier,
+          startDate: startData,
+          endDate: endDate,
         },
+        headers: { Authorization: token },
       });
 
       // Assuming response.data contains your expected structure

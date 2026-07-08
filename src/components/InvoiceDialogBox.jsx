@@ -43,8 +43,8 @@ const DialogBox = ({ isOpen, onClose, invoiceDatas}) => {
             <div className="flex flex-col items-start gap-2">
               <img src={logoUrls} alt="Logo" className="w-24 h-auto" />
               <div>
-                <h1 className="text-2xl font-bold text-gray-800">{data[0]?.restro_name}</h1>
-                <p className="text-sm text-gray-600">{data[0]?.address}</p>
+                <h1 className="text-2xl font-bold text-gray-800">{data?.[0]?.restro_name}</h1>
+                <p className="text-sm text-gray-600">{data?.[0]?.address}</p>
               </div>
             </div>
             <div className="text-right">
@@ -58,7 +58,7 @@ const DialogBox = ({ isOpen, onClose, invoiceDatas}) => {
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div>
               <h3 className="font-semibold text-gray-800 mb-1">Billing From:</h3>
-              <p className="text-sm text-gray-700">{data[0]?.restro_name}</p>
+              <p className="text-sm text-gray-700">{data?.[0]?.restro_name}</p>
             </div>
             <div className="text-right">
               <h3 className="font-semibold text-gray-800 mb-1">Billing To:</h3>

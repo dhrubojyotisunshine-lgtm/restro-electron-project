@@ -98,13 +98,22 @@ const dbQuery = (query, values) => {
   });
 };
 
+const resolveCreatorId = async (userId) => {
+  const [row] = await dbQuery("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
+  if (!row) return null;
+  return Number(row.is_admin) === 1 ? userId : row.created_by;
+};
+
 const deleteRolePermission = async (req, res) => {
   try {
     const { role_id } = req.params;
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
     const results = await dbQuery(
-      "SELECT * FROM sec_role_tbl WHERE role_id = ?",
-      [role_id],
+      "SELECT * FROM sec_role_tbl WHERE role_id = ? AND create_by = ?",
+      [role_id, creatorId],
     );
 
     if (results.length === 0) {
@@ -114,13 +123,9 @@ const deleteRolePermission = async (req, res) => {
       });
     }
 
-    await dbQuery("DELETE FROM sec_role_permission WHERE role_id = ?", [
-      role_id,
-    ]);
+    await dbQuery("DELETE FROM sec_role_permission WHERE role_id = ?", [role_id]);
     await dbQuery("DELETE FROM sec_role_tbl WHERE role_id = ?", [role_id]);
-    await dbQuery("DELETE FROM sec_user_access_tbl WHERE fk_role_id = ?", [
-      role_id,
-    ]);
+    await dbQuery("DELETE FROM sec_user_access_tbl WHERE fk_role_id = ?", [role_id]);
 
     res.status(200).json({
       success: true,
@@ -442,40 +447,47 @@ const createUserAccess = (req, res) => {
   });
 };
 
-const deleteUserAccess = (req, res) => {
+const deleteUserAccess = async (req, res) => {
   const { role_acc_id } = req.params;
-  const sql = "DELETE FROM sec_user_access_tbl WHERE role_acc_id = ?";
+  const userId = req.id;
 
-  db.run(sql, [role_acc_id], function (err) {
-    if (err) {
-      console.error("Database query error:", err);
-      res.status(500).json({ success: false, message: "An error occurred" });
-    } else if (this.changes === 0) {
-      res.status(404).json({
-        success: false,
-        message: "User access record not found",
-      });
-    } else {
-      res.status(200).json({
-        success: true,
-        message: "User access deleted successfully",
-      });
-    }
-  });
+  try {
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
+    const sql = "DELETE FROM sec_user_access_tbl WHERE role_acc_id = ? AND created_by = ?";
+
+    db.run(sql, [role_acc_id, creatorId], function (err) {
+      if (err) {
+        console.error("Database query error:", err);
+        return res.status(500).json({ success: false, message: "An error occurred" });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ success: false, message: "User access record not found" });
+      }
+      res.status(200).json({ success: true, message: "User access deleted successfully" });
+    });
+  } catch (err) {
+    console.error("Database query error:", err);
+    res.status(500).json({ success: false, message: "An error occurred" });
+  }
 };
 
 const editAccessRole = async (req, res) => {
   try {
     const fk_user_id = req.params.id;
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
     const accessInfoQuery = `
       SELECT srt.role_name, srt.role_id
-      FROM sec_user_access_tbl suat 
-      LEFT JOIN sec_role_tbl srt ON srt.role_id = suat.fk_role_id 
-      WHERE suat.fk_user_id = ?
+      FROM sec_user_access_tbl suat
+      LEFT JOIN sec_role_tbl srt ON srt.role_id = suat.fk_role_id
+      WHERE suat.fk_user_id = ? AND suat.created_by = ?
     `;
 
-    const accessInfo = await dbQuery(accessInfoQuery, [fk_user_id]);
+    const accessInfo = await dbQuery(accessInfoQuery, [fk_user_id, creatorId]);
 
     const usernameQuery = `
       SELECT id, firstname, lastname 
@@ -509,24 +521,20 @@ const editAccessRole = async (req, res) => {
 const updateUserAccess = async (req, res) => {
   const id = req.params.id;
   const { fk_role_ids, fk_user_id } = req.body;
-  console.log("user id", fk_user_id);
+  const userId = req.id;
 
   try {
-    // First, delete the existing roles for the user
-    const deleteQuery = "DELETE FROM sec_user_access_tbl WHERE fk_user_id = ?";
-    await db.run(deleteQuery, [id]);
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-    // Insert the new roles for the user (SQLite doesn't support bulk insert with VALUES ?)
-    const insertQuery =
-      "INSERT INTO sec_user_access_tbl (fk_role_id, fk_user_id) VALUES (?, ?)";
+    await dbQuery("DELETE FROM sec_user_access_tbl WHERE fk_user_id = ? AND created_by = ?", [id, creatorId]);
 
+    const insertQuery = "INSERT INTO sec_user_access_tbl (fk_role_id, fk_user_id, created_by) VALUES (?, ?, ?)";
     for (const role_id of fk_role_ids) {
-      await db.run(insertQuery, [role_id, fk_user_id]);
+      await dbQuery(insertQuery, [role_id, fk_user_id, creatorId]);
     }
 
-    res
-      .status(200)
-      .json({ success: true, message: "User access updated successfully" });
+    res.status(200).json({ success: true, message: "User access updated successfully" });
   } catch (err) {
     console.error("Database query error:", err);
     res.status(500).json({
@@ -773,11 +781,14 @@ const createRolePermission = async (req, res) => {
 const getRolePermissionById = async (req, res) => {
   try {
     const role_id = parseInt(req.params.role_id, 10);
-    console.log("role_id:", role_id);
+    const userId = req.id;
+    const creatorId = await resolveCreatorId(userId);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-    const role = await dbQuery("SELECT * FROM sec_role_tbl WHERE role_id = ?", [
-      role_id,
-    ]);
+    const role = await dbQuery(
+      "SELECT * FROM sec_role_tbl WHERE role_id = ? AND create_by = ?",
+      [role_id, creatorId],
+    );
 
     console.log("Raw role:", role);
 
@@ -823,15 +834,22 @@ const updateRolePermission = async (req, res) => {
     const id = parseInt(req.params.role_id, 10);
     const { role_name, role_description, permissions } = req.body;
     const updated_by = req.id;
-    console.log(updated_by, "up");
+    const creatorId = await resolveCreatorId(updated_by);
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
+    // Verify ownership before updating
+    const [existing] = await dbQuery(
+      "SELECT role_id FROM sec_role_tbl WHERE role_id = ? AND create_by = ?",
+      [id, creatorId],
+    );
+    if (!existing) return res.status(404).json({ success: false, message: "Role not found" });
+
     const date_time = new Date().toISOString().slice(0, 19).replace("T", " ");
 
-    // Update role details
+    // Update role details — do not overwrite create_by
     db.run(
-      `UPDATE sec_role_tbl 
-       SET role_name = ?, role_description = ?, create_by = ?, date_time = ? 
-       WHERE role_id = ?`,
-      [role_name, role_description, updated_by, date_time, id],
+      `UPDATE sec_role_tbl SET role_name = ?, role_description = ?, date_time = ? WHERE role_id = ?`,
+      [role_name, role_description, date_time, id],
       function (err) {
         if (err) {
           console.error("Error updating role:", err);

@@ -63,7 +63,7 @@ const AddEmpolye = () => {
   // duty type
   const getDutyType = async () => {
     await axios
-      .get(`${API_BASE_URL}/dutytype`)
+      .get(`${API_BASE_URL}/dutytype`, { headers: { Authorization: token } })
       .then((res) => {
         setDutyType(res.data.data);
         console.log("data recive  duty ak", dutyType);
@@ -89,7 +89,7 @@ const AddEmpolye = () => {
   // get Pay frequency
   const getPayFrequency = async () => {
     try {
-      let res = await axios.get(`${API_BASE_URL}/frequencytype`);
+      let res = await axios.get(`${API_BASE_URL}/frequencytype`, { headers: { Authorization: token } });
       console.log(res.data);
       setPayfrequency(res.data.data);
     } catch (error) {
@@ -101,7 +101,7 @@ const AddEmpolye = () => {
 
   const getrateType = async () => {
     try {
-      let res = await axios.get(`${API_BASE_URL}/ratetype`);
+      let res = await axios.get(`${API_BASE_URL}/ratetype`, { headers: { Authorization: token } });
       console.log(res.data);
       setRateType(res.data.data);
     } catch (error) {
@@ -111,7 +111,7 @@ const AddEmpolye = () => {
   // mstatus
   const getMstatus = async () => {
     try {
-      let res = await axios.get(`${API_BASE_URL}/mstatus`);
+      let res = await axios.get(`${API_BASE_URL}/mstatus`, { headers: { Authorization: token } });
       console.log(res.data);
       setMstatus(res.data.data);
     } catch (error) {
@@ -121,7 +121,7 @@ const AddEmpolye = () => {
 
   const getGender = async () => {
     try {
-      let res = await axios.get(`${API_BASE_URL}/gender`);
+      let res = await axios.get(`${API_BASE_URL}/gender`, { headers: { Authorization: token } });
       console.log(res.data);
       setGendar(res.data.data);
     } catch (error) {

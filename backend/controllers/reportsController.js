@@ -998,27 +998,25 @@ const getCashRegister = async (req, res) => {
 
 const getCashUser = async (req, res) => {
   try {
-    let query = `
+    const userId = req.id;
+    const [userRow] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
+    if (!userRow) return res.status(404).json({ success: false, message: "User not found" });
+    const creatorId = Number(userRow.is_admin) === 1 ? userId : userRow.created_by;
+
+    const query = `
       SELECT cr.id, cr.userid,
-             CONCAT(u.firstname, ' ', u.lastname) AS username
+             u.firstname || ' ' || u.lastname AS username
       FROM tbl_cashregister AS cr
       LEFT JOIN user AS u ON cr.userid = u.id
       WHERE cr.status = 1
-      GROUP BY cr.userid;
+        AND (cr.userid = ? OR u.created_by = ?)
+      GROUP BY cr.userid
     `;
-    const rows = await dbQuery(query);
-
-    res.status(200).json({
-      success: true,
-      data: rows,
-    });
+    const rows = await queryDb(query, [creatorId, creatorId]);
+    res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error("Error fetching cash register data:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error retrieving cash register data.",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error retrieving cash register data.", error: error.message });
   }
 };
 

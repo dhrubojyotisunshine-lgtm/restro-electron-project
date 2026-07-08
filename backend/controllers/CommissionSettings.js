@@ -1,184 +1,61 @@
 const db = require("../utils/db");
 
-const createCommissionSetting = (req, res) => {
-  const { restro_name, email, phone, phone_optional, address, powerbytxt } =
-    req.body;
+const resolveCreatorId = (userId, callback) => {
+  db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (err, row) => {
+    if (err) return callback(err, null);
+    if (!row) return callback(null, null);
+    const creatorId = Number(row.is_admin) === 1 ? userId : row.created_by;
+    callback(null, creatorId);
+  });
+};
 
+const createCommissionSetting = (req, res) => {
+  const { pos_id, rate } = req.body;
   const user_id = req.id;
 
-  const logo = req.files?.logo?.[0]?.filename || null;
-  const logo_footer = req.files?.logo_footer?.[0]?.filename || null;
-  const fevicon = req.files?.fevicon?.[0]?.filename || null;
-
-  if (!restro_name?.trim() || !email?.trim() || !phone?.trim()) {
-    return res.status(400).json({
-      success: false,
-      message: "Required fields missing",
-    });
+  if (!pos_id || rate === undefined || rate === null || rate === "") {
+    return res.status(400).json({ success: false, message: "Required fields missing" });
   }
 
-  const checkSubscriptionQuery =
-    "SELECT * FROM superadmin_user_plans WHERE user_id = ?";
+  resolveCreatorId(user_id, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-  db.get(checkSubscriptionQuery, [user_id], (err, subscription) => {
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: err.message,
-      });
-    }
-
-    if (subscription) {
-      return saveSettings(user_id);
-    }
-
-    const checkUserCreatedByQuery = "SELECT created_by FROM user WHERE id = ?";
-
-    db.get(checkUserCreatedByQuery, [user_id], (err, userData) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: err.message,
+    db.run(
+      "INSERT INTO payroll_commission_setting (pos_id, rate, created_by) VALUES (?, ?, ?)",
+      [pos_id, rate, creatorId],
+      function (err) {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        return res.status(201).json({
+          success: true,
+          message: "Commission created successfully",
+          data: { id: this.lastID },
         });
       }
+    );
+  });
+};
 
-      if (!userData || !userData.created_by) {
-        return res.status(403).json({
-          success: false,
-          message: "You are not authorized to create commission settings.",
-        });
-      }
+const getAllCommissionSettings = (req, res) => {
+  const user_id = req.id;
 
-      const created_by = userData.created_by;
+  resolveCreatorId(user_id, (err, creatorId) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (!creatorId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-      db.get(
-        checkSubscriptionQuery,
-        [created_by],
-        (err, creatorSubscription) => {
-          if (err) {
-            return res.status(500).json({
-              success: false,
-              message: err.message,
-            });
-          }
+    const query = `
+      SELECT pcs.*, p.position_name
+      FROM payroll_commission_setting pcs
+      LEFT JOIN position p ON pcs.pos_id = p.pos_id
+      WHERE pcs.created_by = ?
+      ORDER BY pcs.id DESC
+    `;
 
-          if (!creatorSubscription) {
-            return res.status(403).json({
-              success: false,
-              message: "Creator does not have an active subscription.",
-            });
-          }
-
-          return saveSettings(created_by);
-        },
-      );
+    db.all(query, [creatorId], (err, rows) => {
+      if (err) return res.status(500).json({ success: false, message: err.message });
+      return res.json({ success: true, data: rows });
     });
   });
-
-  function saveSettings(created_by) {
-    const checkQuery = `SELECT * FROM commission_settings WHERE user_id = ? LIMIT 1`;
-
-    db.get(checkQuery, [created_by], (err, existing) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: err.message,
-        });
-      }
-
-      if (existing) {
-        const updateQuery = `
-          UPDATE commission_settings SET
-            restro_name = ?,
-            email = ?,
-            phone = ?,
-            phone_optional = ?,
-            address = ?,
-            powerbytxt = ?,
-            logo = COALESCE(?, logo),
-            logo_footer = COALESCE(?, logo_footer),
-            fevicon = COALESCE(?, fevicon)
-          WHERE id = ? AND user_id = ?
-        `;
-
-        db.run(
-          updateQuery,
-          [
-            restro_name,
-            email,
-            phone,
-            phone_optional,
-            address,
-            powerbytxt,
-            logo,
-            logo_footer,
-            fevicon,
-            existing.id,
-            created_by,
-          ],
-          function (err) {
-            if (err) {
-              return res.status(500).json({
-                success: false,
-                message: err.message,
-              });
-            }
-
-            return res.json({
-              success: true,
-              message: "Settings updated successfully",
-            });
-          },
-        );
-      } else {
-        const insertQuery = `
-          INSERT INTO commission_settings (
-            user_id,
-            restro_name,
-            email,
-            phone,
-            phone_optional,
-            address,
-            powerbytxt,
-            logo,
-            logo_footer,
-            fevicon
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        db.run(
-          insertQuery,
-          [
-            created_by,
-            restro_name,
-            email,
-            phone,
-            phone_optional,
-            address,
-            powerbytxt,
-            logo,
-            logo_footer,
-            fevicon,
-          ],
-          function (err) {
-            if (err) {
-              return res.status(500).json({
-                success: false,
-                message: err.message,
-              });
-            }
-
-            return res.status(201).json({
-              success: true,
-              message: "Settings created successfully",
-              data: { id: this.lastID },
-            });
-          },
-        );
-      }
-    });
-  }
 };
 
 const getCommissionSettingById = (req, res) => {
@@ -191,172 +68,44 @@ const getCommissionSettingById = (req, res) => {
     WHERE pcs.id = ?
   `;
 
-  // Use db.get if expecting a single result
   db.get(query, [id], (err, row) => {
     if (err) {
-      console.error("Database fetch error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "An error occurred while fetching the commission setting",
-      });
+      return res.status(500).json({ success: false, message: err.message });
     }
-
     if (!row) {
-      return res.status(404).json({
-        success: false,
-        message: "Commission setting not found",
-      });
+      return res.status(404).json({ success: false, message: "Commission setting not found" });
     }
-
-    return res.status(200).json({
-      success: true,
-      data: row,
-    });
+    return res.status(200).json({ success: true, data: row });
   });
 };
 
-const getAllCommissionSettings = (req, res) => {
-  const id = req.id;
-
-  const checkUserQuery = "SELECT created_by, is_admin FROM user WHERE id = ?";
-
-  db.get(checkUserQuery, [id], (userErr, userData) => {
-    if (userErr) {
-      return res.status(500).json({
-        success: false,
-        message: userErr.message,
-      });
-    }
-
-    if (!userData) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    const creatorId = userData.is_admin === 1 ? id : userData.created_by;
-
-    if (!creatorId) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized access to settings",
-      });
-    }
-
-    const query = `
-      SELECT *
-      FROM commission_settings
-      WHERE user_id = ?
-      LIMIT 1
-    `;
-
-    db.get(query, [creatorId], (err, row) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: err.message,
-        });
-      }
-
-      return res.json({
-        success: true,
-        data: row || {},
-      });
-    });
-  });
-};
 const updateCommissionSetting = (req, res) => {
   const { id } = req.params;
+  const { rate } = req.body;
 
-  const { restro_name, email, phone, phone_optional, address, powerbytxt } =
-    req.body;
-
-  const logo = req.files?.logo?.[0]?.filename || null;
-  const logo_footer = req.files?.logo_footer?.[0]?.filename || null;
-  const fevicon = req.files?.fevicon?.[0]?.filename || null;
-
-  if (!id) {
-    return res.status(400).json({
-      success: false,
-      message: "ID is required",
-    });
+  if (!id) return res.status(400).json({ success: false, message: "ID is required" });
+  if (rate === undefined || rate === null || rate === "") {
+    return res.status(400).json({ success: false, message: "Rate is required" });
   }
-
-  if (!restro_name?.trim() || !email?.trim() || !phone?.trim()) {
-    return res.status(400).json({
-      success: false,
-      message: "Required fields missing",
-    });
-  }
-
-  const updateQuery = `
-    UPDATE commission_settings SET
-      restro_name = ?,
-      email = ?,
-      phone = ?,
-      phone_optional = ?,
-      address = ?,
-      powerbytxt = ?,
-      logo = COALESCE(?, logo),
-      logo_footer = COALESCE(?, logo_footer),
-      fevicon = COALESCE(?, fevicon)
-    WHERE id = ?
-  `;
 
   db.run(
-    updateQuery,
-    [
-      restro_name,
-      email,
-      phone,
-      phone_optional,
-      address,
-      powerbytxt,
-      logo,
-      logo_footer,
-      fevicon,
-      id,
-    ],
+    "UPDATE payroll_commission_setting SET rate = ? WHERE id = ?",
+    [rate, id],
     function (err) {
-      if (err) {
-        console.error("UPDATE ERROR:", err);
-        return res.status(500).json({
-          success: false,
-          message: err.message,
-        });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "No record found to update",
-        });
-      }
-
-      return res.json({
-        success: true,
-        message: "Settings updated successfully",
-      });
-    },
+      if (err) return res.status(500).json({ success: false, message: err.message });
+      if (this.changes === 0) return res.status(404).json({ success: false, message: "No record found to update" });
+      return res.json({ success: true, message: "Commission updated successfully" });
+    }
   );
 };
 
 const deleteCommissionSetting = (req, res) => {
-  const query = `DELETE FROM commission_settings`;
+  const { id } = req.params;
 
-  db.run(query, [], function (err) {
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: err.message,
-      });
-    }
-
-    return res.json({
-      success: true,
-      message: "Settings deleted",
-    });
+  db.run("DELETE FROM payroll_commission_setting WHERE id = ?", [id], function (err) {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (this.changes === 0) return res.status(404).json({ success: false, message: "Record not found" });
+    return res.json({ success: true, message: "Commission deleted successfully" });
   });
 };
 

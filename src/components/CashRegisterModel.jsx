@@ -36,7 +36,7 @@ const CashRegisterModel = ({ isOpen, onClose, setIsCashRegisterOpen}) => {
         closing_balance: data.closingBalance,
         closing_note: note,
         closedate: currentdate,
-      })
+      }, { headers: { Authorization: token } })
       .then((res) => {
         console.log(res.data);
         onClose();
