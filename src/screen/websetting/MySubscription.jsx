@@ -460,16 +460,15 @@ const MySubscription = () => {
                 <div className="font-semibold text-2xl mb-2">
                   Subscription Plan Details
                 </div>
-                {subscription.some(
-                  (s) =>
-                    s.end_date &&
-                    new Date(s.end_date) <=
-                      new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
-                ) && (
+                {subscription.some(s => s.end_date && new Date(s.end_date) < new Date()) ? (
+                  <div className="bg-red-100 text-red-800 p-4 rounded mb-4 font-semibold">
+                    ⚠️ Some of your subscriptions have expired!
+                  </div>
+                ) : subscription.some(s => s.end_date && new Date(s.end_date) <= new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)) ? (
                   <div className="bg-red-100 text-red-800 p-4 rounded mb-4 font-semibold">
                     ⚠️ Some of your subscriptions are about to expire soon!
                   </div>
-                )}
+                ) : null}
 
                 <div className="overflow-hidden shadow-lg rounded-lg border border-gray-200 bg-white">
                   <div className="w-full overflow-x-auto hide-scrollbar">

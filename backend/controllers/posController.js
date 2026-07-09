@@ -675,7 +675,7 @@ const getCategoryList = async (req, res) => {
     (parent.parentid = 0 OR parent.parentid = '' OR parent.parentid IS NULL)
     AND parent.CategoryIsActive = 1
     AND (child.CategoryIsActive = 1 OR child.CategoryID IS NULL)
-    AND parent.created_by = ?
+    AND parent.UserIDInserted = ?
   ORDER BY parent.CategoryID, child.CategoryID;
 `;
 

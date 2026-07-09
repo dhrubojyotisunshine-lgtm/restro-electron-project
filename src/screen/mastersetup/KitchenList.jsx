@@ -638,7 +638,7 @@ const KitchenList = () => {
             <div className="w-full max-w-md px-6">
               <div className="bg-white rounded-md shadow-md border border-[#1C1D3E]">
                 <div className="flex py-2 px-4 justify-between items-center border-b border-black">
-                  <h2 className="text-xl font-semibold">Edit Printer Data</h2>
+                  <h2 className="text-xl font-semibold">Edit Kitchen</h2>
                   <button
                     onClick={() => setIsModalOpen2(false)}
                     className="text-white bg-[#FB3F3F] px-3 py-1 rounded hover:scale-105 font-bold focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-red-500"

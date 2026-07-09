@@ -180,6 +180,7 @@ const db = new sqlite3.Database(
     migrateSubOrderSourceType();
     migrateCommissionSettings();
     migrateSubscriptionIndexes();
+    migrateCommonSettingUserId();
 
     if (process.send) {
       process.send("backend-ready");
@@ -223,6 +224,20 @@ function migrateSubscriptionIndexes() {
         else console.log("✅ superadmin_user_plans(user_plan_id) unique index ready");
       }
     );
+  });
+}
+
+// ---------------- MIGRATE common_setting USER ISOLATION ----------------
+function migrateCommonSettingUserId() {
+  db.all("PRAGMA table_info(common_setting)", (err, columns) => {
+    if (err) { console.error("⚠️ Could not read common_setting schema:", err.message); return; }
+    const existing = new Set((columns || []).map((c) => c.name));
+    if (!existing.has("user_id")) {
+      db.run("ALTER TABLE common_setting ADD COLUMN user_id INTEGER DEFAULT 0", (e) => {
+        if (e) console.error("⚠️ Could not add user_id to common_setting:", e.message);
+        else console.log("✅ common_setting.user_id column added");
+      });
+    }
   });
 }
 

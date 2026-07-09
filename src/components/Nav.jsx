@@ -299,7 +299,7 @@ const Nav = () => {
     }
   };
   const VITE_IMG_URL = import.meta.env.VITE_IMG_URL;
-  const logoUrls = data2?.map((val) => `${VITE_IMG_URL}${val.fevicon}`) || [];
+  const logoUrls = data2?.fevicon ? `${VITE_IMG_URL}${data2.fevicon}` : null;
 
   const fetchImageData2 = () => {
     axios

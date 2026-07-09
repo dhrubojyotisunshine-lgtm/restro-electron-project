@@ -160,17 +160,7 @@ const getKitchenById = async (req, res) => {
   const { kitchenid } = req.params;
 
   const getKitchenByIdQuery = `
-      SELECT 
-        i.kitchenid,
-        i.kitchen_name,
-        i.printer_id,
-        p.Name AS printer_name
-      FROM 
-        tbl_kitchen i
-      LEFT JOIN 
-        printers p ON i.printer_id = p.id
-      WHERE 
-        i.kitchenid = ?
+      SELECT id, kitchen_name FROM kitchens WHERE id = ?
     `;
 
   db.get(getKitchenByIdQuery, [kitchenid], (err, data) => {

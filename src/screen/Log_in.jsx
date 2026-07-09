@@ -140,6 +140,7 @@ import React, { useState, useContext, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthContext } from "../store/AuthContext";
 import loginimage from "../assets/log-in-image.webp";
+import defaultLogo from "../assets/images/Group 206124.png";
 import axios from "axios";
 import { toast } from "react-toastify";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
@@ -149,8 +150,9 @@ const Log_in = () => {
     import.meta.env.VITE_API_BASE_URL || "http://localhost:4500/api";
   console.log("🔍 API_BASE_URL:", API_BASE_URL);
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => localStorage.getItem("remembered_email") || "");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem("remembered_email"));
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -159,7 +161,7 @@ const Log_in = () => {
   const [subscriptionKey, setSubscriptionKey] = useState("");
 
   const VITE_IMG_URL = import.meta.env.VITE_IMG_URL;
-  const [data, setData] = useState([]);
+  const [logoUrl, setLogoUrl] = useState(null);
 
   const handleLogin = async () => {
     setIsLoading(true);
@@ -212,6 +214,12 @@ const Log_in = () => {
 
       storeToken(token, permData, username, userId, isAdmin);
 
+      if (rememberMe) {
+        localStorage.setItem("remembered_email", email);
+      } else {
+        localStorage.removeItem("remembered_email");
+      }
+
       localStorage.setItem("planData", JSON.stringify(planData || null));
       localStorage.setItem("superAdmin", String(superAdmin));
       localStorage.setItem("subscriptionStatus", subscriptionStatus);
@@ -250,31 +258,24 @@ const Log_in = () => {
     }
   };
 
-  const fetchImageData = () => {
+  useEffect(() => {
     axios
-      .get(`${API_BASE_URL}/websetting`)
+      .get(`${API_BASE_URL}/public/setting`)
       .then((response) => {
-        console.log("previwe", response);
-        setData(response.data.data);
+        const d = response.data.data;
+        if (d?.logo) setLogoUrl(`${VITE_IMG_URL}${d.logo}`);
       })
       .catch((error) => {
-        console.error("Error fetching image data:", error);
+        console.error("Error fetching logo:", error);
       });
-  };
-
-  useEffect(() => {
-    fetchImageData();
   }, []);
-  const logoUrls = data.map((val) => {
-    return `${VITE_IMG_URL}${val.logo}`; // Correctly concatenate APP_URL with val.logo
-  });
 
   return (
     <div className="flex min-h-screen">
       {/* Left Side - Login Form */}
       <div className="w-2/5 flex flex-col justify-center items-center bg-white p-10 shadow-lg">
         <img
-          src={logoUrls}
+          src={logoUrl || defaultLogo}
           alt="Smart Order POS"
           className="mb-6 w-[350px] h-[200px]"
         />
@@ -326,7 +327,12 @@ const Log_in = () => {
             disabled={isLoading}
           />
           <div className="flex items-center mt-4">
-            <input type="checkbox" className="mr-2 custom-checkbox" />{" "}
+            <input
+              type="checkbox"
+              className="mr-2 custom-checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+            />{" "}
             <span>Remember me</span>
           </div>
           <button

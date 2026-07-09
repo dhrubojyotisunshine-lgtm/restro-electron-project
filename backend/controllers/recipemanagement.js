@@ -166,7 +166,7 @@ function queryDb(query, params) {
 const resolveCreatorId = async (userId) => {
   const [row] = await queryDb("SELECT is_admin, created_by FROM user WHERE id = ?", [userId]);
   if (!row) return null;
-  return Number(row.is_admin) === 1 ? userId : row.created_by;
+  return Number(row.is_admin) === 1 ? Number(userId) : Number(row.created_by);
 };
 
 const getalldetailsProductiondetails = async (req, res) => {
@@ -175,258 +175,58 @@ const getalldetailsProductiondetails = async (req, res) => {
     const userId = req.id;
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized user",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized user" });
     }
 
-    // Step 1: Get user role and creator
-    const userQuery = `
-      SELECT is_admin, created_by 
-      FROM user 
-      WHERE id = ?
+    const userData = await queryDb(
+      `SELECT is_admin, created_by FROM user WHERE id = ?`,
+      [userId]
+    );
+
+    if (!userData || userData.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const { is_admin, created_by } = userData[0];
+    const creatorId = is_admin === 1 ? userId : created_by;
+
+    if (!creatorId) {
+      return res.status(403).json({ success: false, message: "Unauthorized to view production details" });
+    }
+
+    let query = `
+      SELECT
+        pd.foodid,
+        pd.pvarientid,
+        pd.pro_detailsid,
+        f.ProductName AS foodName,
+        COALESCE(v.variantName, 'No Variant') AS variantName,
+        COALESCE(v.price, 0) AS totalAmount
+      FROM production_details pd
+      LEFT JOIN item_foods f ON f.ProductsID = pd.foodid
+      LEFT JOIN variant v ON v.variantid = pd.pvarientid
+      WHERE pd.createdby = ?
     `;
+    const params = [creatorId];
 
-    db.get(userQuery, [userId], async (err, userData) => {
-      if (err) {
-        console.error("User fetch error:", err);
-        return res.status(500).json({
-          success: false,
-          message: "Database error while fetching user info",
-          error: err.message,
-        });
-      }
+    if (searchItem && searchItem.trim() !== "") {
+      const s = `%${searchItem.trim()}%`;
+      query += ` AND (f.ProductName LIKE ? OR v.variantName LIKE ?)`;
+      params.push(s, s);
+    }
 
-      if (!userData) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found",
-        });
-      }
+    query += ` GROUP BY pd.foodid, pd.pvarientid ORDER BY pd.pro_detailsid DESC`;
 
-      const { is_admin, created_by } = userData;
-      const creatorId = is_admin === 1 ? userId : created_by;
+    const rows = await queryDb(query, params);
 
-      if (!creatorId) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized to view production details",
-        });
-      }
-
-      try {
-        let foodVariantQuery = `
-  SELECT
-    foodid,
-    pvarientid,
-    ingredientid,
-    qty AS productionqty,
-    pro_detailsid
-  FROM production_details
-  WHERE createdby = ?
-`;
-        let queryParams = [creatorId];
-
-        if (searchItem && searchItem.trim() !== "") {
-          const searchValue = `%${searchItem.trim()}%`;
-
-          foodVariantQuery += `
-            AND (
-              foodid IN (
-                SELECT ProductsID 
-                FROM item_foods 
-                WHERE ProductName LIKE ?
-              ) 
-              OR pvarientid IN (
-                SELECT variantid 
-                FROM variant 
-                WHERE variantName LIKE ?
-              )
-            )
-          `;
-
-          queryParams.push(searchValue, searchValue);
-        }
-
-        foodVariantQuery += ` ORDER BY pro_detailsid DESC`;
-
-        const productionDetails = await queryDb(foodVariantQuery, queryParams);
-
-        if (!productionDetails || productionDetails.length === 0) {
-          return res.status(200).json({
-            success: true,
-            message: "No production details found",
-            data: [],
-          });
-        }
-
-        const ingredientIds = [
-          ...new Set(productionDetails.map((item) => item.ingredientid)),
-        ];
-
-        if (ingredientIds.length === 0) {
-          return res.status(200).json({
-            success: true,
-            message: "No ingredients found in production details",
-            data: [],
-          });
-        }
-
-        const placeholders = ingredientIds.map(() => "?").join(",");
-
-        const purchaseQuery = `
-          SELECT 
-            pd.indredientid, 
-            SUM(pd.quantity) AS total_quantity, 
-            SUM(pd.totalprice) AS total_price
-          FROM purchase_details pd
-          WHERE pd.indredientid IN (${placeholders})
-          AND pd.purchaseby = ?
-          GROUP BY pd.indredientid
-        `;
-
-        const purchaseDetails = await queryDb(purchaseQuery, [
-          ...ingredientIds,
-          creatorId,
-        ]);
-
-        const foodIds = [
-          ...new Set(productionDetails.map((item) => item.foodid)),
-        ];
-        const variantIds = [
-          ...new Set(productionDetails.map((item) => item.pvarientid)),
-        ];
-
-        let foodNameResults = [];
-        let variantNameResults = [];
-        let ingredientNames = [];
-
-        if (foodIds.length > 0) {
-          const foodPlaceholders = foodIds.map(() => "?").join(",");
-
-          const foodNameQuery = `
-            SELECT 
-              items.ProductName AS foodName, 
-              items.ProductsID 
-            FROM item_foods items 
-            WHERE items.ProductsID IN (${foodPlaceholders})
-          `;
-
-          foodNameResults = await queryDb(foodNameQuery, foodIds);
-        }
-
-        if (variantIds.length > 0) {
-          const variantPlaceholders = variantIds.map(() => "?").join(",");
-
-          const variantNameQuery = `
-            SELECT 
-              v.variantName, 
-              v.variantid 
-            FROM variant v 
-            WHERE v.variantid IN (${variantPlaceholders})
-          `;
-
-          variantNameResults = await queryDb(variantNameQuery, variantIds);
-        }
-
-        if (ingredientIds.length > 0) {
-          const ingredientPlaceholders = ingredientIds.map(() => "?").join(",");
-
-          const ingredientNameQuery = `
-            SELECT id, ingredient_name 
-            FROM ingredients 
-            WHERE id IN (${ingredientPlaceholders})
-            AND created_by = ?
-          `;
-
-          ingredientNames = await queryDb(ingredientNameQuery, [
-            ...ingredientIds,
-            creatorId,
-          ]);
-        }
-
-        const foodNameLookup = {};
-        foodNameResults.forEach((item) => {
-          foodNameLookup[item.ProductsID] = item.foodName;
-        });
-
-        const variantNameLookup = {};
-        variantNameResults.forEach((item) => {
-          variantNameLookup[item.variantid] = item.variantName;
-        });
-
-        const ingredientNameLookup = {};
-        ingredientNames.forEach((item) => {
-          ingredientNameLookup[item.id] = item.ingredient_name;
-        });
-
-        const result = {};
-
-        productionDetails.forEach((detail) => {
-          const ingredientPurchaseDetail = purchaseDetails.find(
-            (purchase) => String(purchase.indredientid) === String(detail.ingredientid),
-          );
-
-          const pricePerUnit =
-            ingredientPurchaseDetail &&
-            Number(ingredientPurchaseDetail.total_quantity) > 0
-              ? Number(ingredientPurchaseDetail.total_price) /
-                Number(ingredientPurchaseDetail.total_quantity)
-              : 0;
-
-          const productionPrice =
-            pricePerUnit * Number(detail.productionqty || 0);
-
-          const key = `${detail.foodid}-${detail.pvarientid}`;
-
-          if (!result[key]) {
-            result[key] = {
-              foodid: detail.foodid,
-              pvarientid: detail.pvarientid,
-              totalAmount: 0,
-              foodName: foodNameLookup[detail.foodid] || "Unknown",
-              variantName: variantNameLookup[detail.pvarientid] || "Unknown",
-            };
-          }
-
-          result[key].totalAmount += productionPrice;
-        });
-
-        let filteredResults = Object.values(result);
-
-        if (searchItem && searchItem.trim() !== "") {
-          const lowerSearch = searchItem.toLowerCase();
-
-          filteredResults = filteredResults.filter(
-            (item) =>
-              item.foodName.toLowerCase().includes(lowerSearch) ||
-              item.variantName.toLowerCase().includes(lowerSearch) ||
-              item.totalAmount.toString().includes(searchItem),
-          );
-        }
-
-        return res.status(200).json({
-          success: true,
-          data: filteredResults,
-          message: "Production details fetched successfully",
-        });
-      } catch (innerError) {
-        console.error("Error fetching production details:", innerError);
-        return res.status(500).json({
-          success: false,
-          message: "Server Error",
-          error: innerError.message,
-        });
-      }
+    return res.status(200).json({
+      success: true,
+      data: rows || [],
+      message: "Production details fetched successfully",
     });
   } catch (error) {
     console.error("Backend Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "An error occurred on the server",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
 
@@ -570,7 +370,7 @@ const foodWithVariant = async (req, res) => {
     SELECT v.variantname, i.ProductName, v.variantid
     FROM variant v
     LEFT JOIN item_foods i ON i.ProductsID = v.menuid
-    WHERE i.ProductsID = ? AND i.created_by = ?
+    WHERE i.ProductsID = ? AND i.UserIDInserted = ?
   `;
 
   try {

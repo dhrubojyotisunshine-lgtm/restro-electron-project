@@ -420,7 +420,7 @@ const AddProduction = () => {
                   <option value="">Select Option</option>
                   {variant.map((variantItem, index) => (
                     <option key={index} value={variantItem.variantid}>
-                      {variantItem.variantname}
+                      {variantItem.variantName}
                     </option>
                   ))}
                 </select>

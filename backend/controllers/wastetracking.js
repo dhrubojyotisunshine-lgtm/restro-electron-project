@@ -759,7 +759,7 @@ const insertingRdInformation = async (req, res) => {
         quantitystock,
       } = itemdetails[index];
 
-      if (!ingredientId || !qnty || !l_price) {
+      if (!ingredientId || qnty == null || qnty === '' || l_price == null || l_price === '') {
         return res.status(400).json({
           success: false,
           message: "Ingredient, quantity and price are required.",

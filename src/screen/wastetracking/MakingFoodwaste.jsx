@@ -168,6 +168,7 @@ const MakingFoodwaste = () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/variantdata`, {
         params: { foodid },
+        headers: { Authorization: token },
       });
       console.log("Variants received: ", response.data.data);
       setVariant(response.data.data); // Update variant list based on food

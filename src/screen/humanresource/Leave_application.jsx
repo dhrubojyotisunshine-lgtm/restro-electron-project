@@ -681,7 +681,7 @@ const token = localStorage.getItem("token");
                                     <button
                                       className="bg-[#1C1D3E] p-1 rounded-sm text-white hover:scale-105"
                                       onClick={() =>
-                                        handleEditClick(row.leave_apply_id)
+                                        handleEditClick(row.leave_appl_id)
                                       }
                                     >
                                       <FaRegEdit />
