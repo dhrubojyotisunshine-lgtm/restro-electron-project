@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import Nav from "../../components/Nav";
 import Hamburger from "hamburger-react";
 import { IoMdNotifications, IoIosAddCircleOutline } from "react-icons/io";
@@ -37,6 +37,58 @@ const IngredientList = () => {
   const APP_URL = import.meta.env.VITE_APP_URL;
   const headers = ["SL.", "Ingredient Name", "Unit Name", "Action"];
  const token = localStorage.getItem("token");
+  const importInputRef = useRef(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const processImportFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    let rows = [];
+    try {
+      if (ext === "csv") {
+        const text = await file.text();
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        rows = result.data;
+      } else if (ext === "xlsx" || ext === "xls") {
+        const ExcelJS = (await import("exceljs")).default;
+        const workbook = new ExcelJS.Workbook();
+        const buffer = await file.arrayBuffer();
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0];
+        const headers = [];
+        worksheet.getRow(1).eachCell((cell) => headers.push(cell.value));
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return;
+          const obj = {};
+          row.eachCell((cell, colNumber) => { obj[headers[colNumber - 1]] = cell.value; });
+          rows.push(obj);
+        });
+      } else {
+        toast.error("Only CSV or XLSX files are supported.");
+        return;
+      }
+      if (rows.length === 0) { toast.error("No data found in file."); return; }
+      const res = await axios.post(`${API_BASE_URL}/ingredients/import`, { rows }, { headers: { Authorization: token } });
+      if (res.data.success) {
+        toast.success(`Imported: ${res.data.imported}, Skipped: ${res.data.skipped}`);
+        setShowImportModal(false);
+        Ingredient();
+      } else {
+        toast.error(res.data.message || "Import failed.");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Import failed.");
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processImportFile(file);
+  };
+
   const [ingredientModal, setIngredientModal] = useState(false);
   const [isOpen, setOpen] = useState(true);
   const [data, setData] = useState([]);
@@ -201,7 +253,7 @@ const IngredientList = () => {
 
   const [formData2, setFormData2] = useState({
     ingredient_name: "",
-    Unit_Name: "",
+    uom_id: "",
     is_active: 1,
     min_stock: "",
     created_by:"",
@@ -216,7 +268,7 @@ const IngredientList = () => {
     axios.get(`${API_BASE_URL}/ingredients/${id}`).then((response) => {
       setFormData2({
         ingredient_name: response.data.data.ingredient_name,
-        Unit_Name: response.data.data.Unit_Name,
+        uom_id: response.data.data.uom_id,
         is_active: response.data.data.is_active,
         min_stock: response.data.data.min_stock,
         created_by:response.data.data.created_by
@@ -379,15 +431,23 @@ const IngredientList = () => {
 
             <div className="flex justify-between mt-11">
               <span></span>
-              <HasPermission module="Ingredients" action="create">
-                <button
-                  onClick={() => setIngredientModal(true)}
-                  className="bg-[#4CBBA1] h-[46px] w-[165px] rounded-sm flex justify-center items-center gap-x-1 text-white font-semibold"
-                >
-                  <IoIosAddCircleOutline className="font-semibold text-lg" />
-                  Add Ingredient
-                </button>
-              </HasPermission>
+              <div className="flex items-center gap-3">
+                <HasPermission module="Ingredients" action="create">
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="bg-[#1C1D3E] h-[46px] px-4 rounded-sm flex justify-center items-center text-white font-semibold"
+                  >
+                    Import
+                  </button>
+                  <button
+                    onClick={() => setIngredientModal(true)}
+                    className="bg-[#4CBBA1] h-[46px] w-[165px] rounded-sm flex justify-center items-center gap-x-1 text-white font-semibold"
+                  >
+                    <IoIosAddCircleOutline className="font-semibold text-lg" />
+                    Add Ingredient
+                  </button>
+                </HasPermission>
+              </div>
             </div>
             {/* Search Bar */}
 
@@ -706,13 +766,13 @@ const IngredientList = () => {
                       <select
                         className="shadow border w-full border-[#4CBBA1] rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                         id=""
-                        name="Unit_Name"
-                        value={formData2.Unit_Name || ""}
+                        name="uom_id"
+                        value={formData2.uom_id || ""}
                         onChange={handleChange2}
                       >
                         <option value="">Select option</option>
                         {data.map((val, index) => (
-                          <option key={index} value={val.uom_short_code}>
+                          <option key={index} value={val.id}>
                             {val.uom_name}
                           </option>
                         ))}
@@ -751,7 +811,7 @@ const IngredientList = () => {
                       <label className="block text-gray-700">Status</label>
                       <select
                         className="shadow border border-[#4CBBA1] rounded w-full py-2 px-2 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        name="status"
+                        name="is_active"
                         value={formData2.is_active || ""}
                         onChange={handleChange2}
                       >
@@ -783,6 +843,30 @@ const IngredientList = () => {
         onClose={handleModalClose}
         onDelete={handleModalDelete}
       />
+
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-[#1C1D3E]">Import Ingredients</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => importInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragging ? "border-[#4CBBA1] bg-green-50" : "border-gray-300 hover:border-[#4CBBA1]"}`}
+            >
+              <p className="text-gray-500 text-sm">Drag & drop a CSV or XLSX file here, or click to browse</p>
+              <input ref={importInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { if (e.target.files[0]) processImportFile(e.target.files[0]); }} />
+            </div>
+            <div className="mt-3 text-center">
+              <a href="/ingredient_import_sample.csv" download className="text-sm text-[#4CBBA1] underline">Download Sample CSV</a>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

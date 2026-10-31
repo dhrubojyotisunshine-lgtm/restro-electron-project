@@ -183,7 +183,7 @@ const getKitchenById = async (req, res) => {
 // Delete Kitchen data
 const deleteKitchenById = async (req, res) => {
   const { kitchenid } = req.params;
-  const query = `DELETE FROM tbl_kitchen WHERE kitchenid = ?`;
+  const query = `DELETE FROM kitchens WHERE id = ?`;
 
   try {
     db.run(query, [kitchenid], function (err) {

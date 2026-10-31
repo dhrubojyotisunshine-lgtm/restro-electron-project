@@ -1,0 +1,3 @@
+First_Name,Last_Name,Email,Phone,DOB,Gender,Country,State,City,Zip,Division,Designation,Duty_Type,Marital_Status,Home_Email,Home_Phone,Emergency_Contact,Emergency_Phone,Hire_Date,Original_Hire_Date,Termination_Date,Rehire_Date,Rate_Type,Rate,Pay_Frequency
+John,Smith,john.smith@example.com,9876543210,1990-05-15,Male,India,Gujarat,Ahmedabad,380001,Operations,Manager,Full Time,Single,john.home@example.com,9876500000,Jane Smith,9876511111,2024-01-01,2024-01-01,,,Hourly,500,Monthly
+Jane,Doe,jane.doe@example.com,9123456780,1992-08-20,Female,India,Gujarat,Surat,395001,HR,Cashier,Full Time,Single,,,Jane Contact,9123400000,2024-01-15,2024-01-15,,,Hourly,400,Monthly

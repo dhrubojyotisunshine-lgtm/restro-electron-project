@@ -52,7 +52,8 @@ const CancleOrder = () => {
   const showInvoiceData = async (order_id) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/getOrderById/${order_id}`
+        `${API_BASE_URL}/getOrderById/${order_id}`,
+        { headers: { Authorization: token } }
       );
       setInvoiceData([response.data]);
       console.log("Invoice Data: ", invoiceData);
@@ -66,13 +67,14 @@ const CancleOrder = () => {
   const componentRef = useRef();
 
   const handlePrint = useReactToPrint({
-    content: () => componentRef.current,
+    contentRef: componentRef,
   });
 
   const showBillDetails = async (order_id) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/getOrderById/${order_id}`
+        `${API_BASE_URL}/getOrderById/${order_id}`,
+        { headers: { Authorization: token } }
       );
       setBillData([response.data]); // Set the data first
       console.log("Bill me daal na h ye data ", response.data);

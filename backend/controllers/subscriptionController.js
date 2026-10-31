@@ -59,28 +59,72 @@ const getSubscriptionsByUser = (req, res) => {
   });
 };
 
-const createSubscription = (req, res) => {
+const createSubscription = async (req, res) => {
   const { user_id, plan_id } = req.body;
   if (!user_id || !plan_id) {
     return res.status(400).json({ success: false, message: "user_id and plan_id are required" });
   }
-  db.run(
-    `INSERT INTO superadmin_user_plans (user_id, plan_id, package_status) VALUES (?, ?, 'Pending')`,
-    [user_id, plan_id],
-    function (err) {
-      if (err) {
-        console.error("Error creating subscription:", err);
-        return res.status(500).json({ success: false, message: "Error creating subscription" });
-      }
-      res.status(200).json({ success: true, message: "Subscription request submitted (Pending approval)" });
+
+  try {
+    // Get user email from local DB
+    const email = await new Promise((resolve, reject) =>
+      db.get("SELECT email FROM user WHERE id = ?", [user_id], (err, row) =>
+        err ? reject(err) : resolve(row?.email)
+      )
+    );
+
+    if (!email) {
+      return res.status(404).json({ success: false, message: "User email not found locally" });
     }
-  );
+
+    // Get live user_id by email
+    const userIdRes = await axios.post(`${LIVE_API_URL}/get-user-id`, { email }, { timeout: 10000 });
+    const liveUserId = userIdRes.data?.user_id;
+
+    if (!liveUserId) {
+      return res.status(404).json({ success: false, message: "User not found on live server" });
+    }
+
+    // Forward subscription request to live website
+    const authToken = req.headers.authorization;
+    const liveCreateRes = await axios.post(
+      `${LIVE_API_URL}/createsubscription`,
+      { user_id: liveUserId, plan_id },
+      { headers: { Authorization: authToken }, timeout: 10000 }
+    );
+
+    const liveUserPlanId = liveCreateRes.data?.subscription_id || null;
+
+    // Save locally as Pending with live user_plan_id so renew-plan works
+    db.run(
+      `INSERT OR IGNORE INTO superadmin_user_plans (user_plan_id, user_id, plan_id, package_status) VALUES (?, ?, ?, 'pending')`,
+      [liveUserPlanId, user_id, plan_id],
+      function (err) {
+        if (err) {
+          console.error("Error saving subscription locally:", err);
+          return res.status(500).json({ success: false, message: "Sent to live but failed to save locally" });
+        }
+        res.status(200).json({ success: true, message: "Subscription request submitted successfully" });
+      }
+    );
+  } catch (err) {
+    console.error("createSubscription error:", err.message);
+    const msg = err.response?.data?.message || "Failed to submit subscription. Please check your internet connection.";
+    return res.status(500).json({ success: false, message: msg });
+  }
 };
 
-// Strips ISO timestamp to YYYY-MM-DD for SQLite date() compatibility
+// Strips ISO timestamp to YYYY-MM-DD using local date (avoids UTC-to-local day shift)
 const toDateOnly = (val) => {
   if (!val) return val;
-  return String(val).slice(0, 10);
+  const str = String(val);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // already date-only
+  const d = new Date(val);
+  if (isNaN(d)) return str.slice(0, 10);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 // Shared DB upsert logic used by both syncSubscriptionData and triggerSubscriptionSync
@@ -171,6 +215,23 @@ const triggerSubscriptionSync = async (req, res) => {
     }
   } catch {
     // Offline or live server error — skip sync, return local data below
+  }
+
+  // Fetch live order_count and user_count from activate-exe and store in restaurant_settings
+  try {
+    db.get("SELECT email FROM user WHERE id = ?", [userId], async (err, userRow) => {
+      if (err || !userRow) return;
+      const activateRes = await axios.post(`${LIVE_API_URL}/activate-exe`, { email: userRow.email }, { timeout: 10000 });
+      if (activateRes.data?.success) {
+        const { order_count = 0, user_count = 0 } = activateRes.data.data || {};
+        db.run(
+          "UPDATE restaurant_settings SET live_order_count = ?, live_user_count = ? WHERE user_id = ?",
+          [order_count, user_count, userId]
+        );
+      }
+    });
+  } catch {
+    // Offline — skip usage sync
   }
 
   // Always return local SQLite data (works offline after first sync)

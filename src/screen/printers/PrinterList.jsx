@@ -21,6 +21,17 @@ import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+const CONNECTION_TAG_STYLE = {
+  Network: "bg-[#E4F5EE] text-[#1C7A54]",
+  USB: "bg-[#E7EDF7] text-[#2C4F9C]",
+  Bluetooth: "bg-[#F1E9FB] text-[#6A3FB0]",
+  Shared: "bg-[#EAF3FB] text-[#1E6FA8]",
+  "Local Port": "bg-[#FDF0E3] text-[#96601A]",
+  Virtual: "bg-[#F1F2F3] text-[#5B6A72]",
+  Saved: "bg-[#FFF4E0] text-[#8A5A00]",
+  Other: "bg-[#F1F2F3] text-[#5B6A72]",
+};
+
 const PrinterList = () => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const token = localStorage.getItem("token");
@@ -37,6 +48,7 @@ const PrinterList = () => {
 
   const [detectedPrinters, setDetectedPrinters] = useState([]);
   const [detectLoading, setDetectLoading] = useState(false);
+  const [selectedDetectedIndex, setSelectedDetectedIndex] = useState(null);
 
   const [searchName, setSearchName] = useState("");
   const [formdata, setFormdata] = useState(initialFormData);
@@ -163,6 +175,7 @@ const PrinterList = () => {
   const handleDetectPrinters = async () => {
     try {
       setDetectLoading(true);
+      setSelectedDetectedIndex(null);
 
       const res = await axios.get(`${API_BASE_URL}/detect-system-printers`, {
         headers: {
@@ -170,9 +183,29 @@ const PrinterList = () => {
         },
       });
 
-      if (res.data.success) {
-        setDetectedPrinters(res.data.data || []);
-      }
+      const windowsPrinters = res.data.success ? res.data.data || [] : [];
+
+      // Network printers added by IP are never installed in Windows, so they
+      // can't be detected — surface the ones already saved here so they can be
+      // picked for another kitchen without retyping the IP.
+      const savedPrinters = (data || []).map((p) => ({
+        name: p.printer_name,
+        connection_type: p.printer_type,
+        detected_connection: "Saved",
+        path: p.printer_path,
+        port: null,
+        assigned_kitchen: p.kitchen_name,
+      }));
+
+      const seen = new Set();
+      const merged = [...savedPrinters, ...windowsPrinters].filter((p) => {
+        const key = `${p.connection_type}|${p.path}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      setDetectedPrinters(merged);
     } catch (error) {
       console.log(error);
       alert("Failed to detect printers");
@@ -181,12 +214,11 @@ const PrinterList = () => {
     }
   };
 
-  const handleSelectDetectedPrinter = (e) => {
-    const selectedIndex = e.target.value;
-
-    if (selectedIndex === "") return;
-
+  const handleSelectDetectedPrinter = (selectedIndex) => {
     const printer = detectedPrinters[selectedIndex];
+    if (!printer) return;
+
+    setSelectedDetectedIndex(selectedIndex);
 
     setFormdata((prev) => ({
       ...prev,
@@ -775,18 +807,56 @@ const PrinterList = () => {
             </button>
 
             {detectedPrinters.length > 0 && (
-              <select
-                className="mt-3 shadow border border-[#4CBBA1] rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                onChange={handleSelectDetectedPrinter}
-              >
-                <option value="">Select Detected Printer</option>
+              <div className="mt-3">
+                <p className="mb-2 text-gray-700 font-semibold text-sm">
+                  Select Detected Printer
+                </p>
 
-                {detectedPrinters.map((printer, index) => (
-                  <option key={index} value={index}>
-                    {printer.name} - {printer.path}
-                  </option>
-                ))}
-              </select>
+                <div className="border border-[#4CBBA1] rounded overflow-hidden">
+                  {detectedPrinters.map((printer, index) => (
+                    <button
+                      type="button"
+                      key={index}
+                      onClick={() => handleSelectDetectedPrinter(index)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm border-b last:border-b-0 border-gray-200 ${
+                        selectedDetectedIndex === index
+                          ? "bg-[#E4F5EE]"
+                          : "bg-white hover:bg-gray-50"
+                      }`}
+                    >
+                      <span className="flex-1 text-gray-700 truncate">
+                        {printer.name}
+                        {printer.assigned_kitchen && (
+                          <span className="text-gray-400 font-normal">
+                            {" "}
+                            · {printer.assigned_kitchen}
+                          </span>
+                        )}
+                      </span>
+
+                      <span
+                        className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${
+                          CONNECTION_TAG_STYLE[printer.detected_connection] ||
+                          CONNECTION_TAG_STYLE.Other
+                        }`}
+                      >
+                        {printer.detected_connection || "Other"}
+                      </span>
+
+                      {printer.connection_type === "network" && (
+                        <span className="shrink-0 text-[11px] text-gray-500 font-mono">
+                          {printer.path}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="mt-2 text-xs text-gray-500">
+                  Printer Name, Type &amp; Path fill in automatically — then just
+                  select the Kitchen.
+                </p>
+              </div>
             )}
           </div>
           {/* Printer Name */}

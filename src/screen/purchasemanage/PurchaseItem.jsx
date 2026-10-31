@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import Nav from "../../components/Nav";
 import { useNavigate } from "react-router-dom";
 import Hamburger from "hamburger-react";
@@ -23,11 +23,11 @@ import useFullScreen from "../../components/useFullScreen";
 const headers = [
   "SL.",
   "Invoice No.",
-
   "Supplier Name",
   "Date",
   "Total Price",
-
+  "Paid Amount",
+  "Pending Amount",
   "Action",
 ];
 const Tooltip = ({ message, children }) => {
@@ -52,6 +52,11 @@ const PurchaseItem = () => {
   const [searchName, setSearchName] = useState("");
   const token = localStorage.getItem("token");
   const [grandTotal, setGrandTotal] = useState(0);
+  const importInputRef = useRef(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const [apiItems, setApiItems] = useState([]);
   const [suppler, setSuppler] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState([]);
@@ -60,6 +65,7 @@ const PurchaseItem = () => {
   const [errors, setErrors] = useState({});
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [extraPayment, setExtraPayment] = useState("");
+  const [extraPaymentMethod, setExtraPaymentMethod] = useState("");
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -203,6 +209,56 @@ const PurchaseItem = () => {
       });
   };
 
+  const processImportFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      let rows = [];
+      if (ext === "csv") {
+        const text = await file.text();
+        const parsed = await new Promise((resolve) => {
+          Papa.parse(text, { header: true, skipEmptyLines: true, complete: resolve });
+        });
+        rows = parsed.data;
+      } else if (ext === "xlsx" || ext === "xls") {
+        const ExcelJS = (await import("exceljs")).default;
+        const wb = new ExcelJS.Workbook();
+        const buffer = await file.arrayBuffer();
+        await wb.xlsx.load(buffer);
+        const ws = wb.worksheets[0];
+        const headers = [];
+        ws.getRow(1).eachCell((cell) => headers.push(cell.value));
+        ws.eachRow((row, rowNum) => {
+          if (rowNum === 1) return;
+          const obj = {};
+          row.eachCell((cell, colNum) => { obj[headers[colNum - 1]] = cell.value; });
+          rows.push(obj);
+        });
+      } else {
+        toast.error("Only CSV, XLSX, XLS files are supported.");
+        setImportLoading(false);
+        return;
+      }
+      const importToken = localStorage.getItem("token");
+      const res = await axios.post(`${API_BASE_URL}/purchaseitem/import`, { rows }, { headers: { Authorization: importToken } });
+      setImportResult(res.data);
+      if (res.data.imported > 0) { getPurchaseData(); toast.success(`Imported: ${res.data.imported}`); }
+      if (res.data.skipped > 0) toast.warn(`Skipped: ${res.data.skipped}`);
+    } catch (err) {
+      toast.error("Import failed: " + (err.response?.data?.message || err.message));
+    }
+    setImportLoading(false);
+  };
+
+  const handleImportDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processImportFile(file);
+  };
+
   // Handling form input changes for purchase details
   const handlePurchaseDetailChange = (e) => {
     const { name, value } = e.target;
@@ -321,6 +377,10 @@ const PurchaseItem = () => {
       toast.error("Cannot pay more than remaining!");
       return;
     }
+    if (!extraPaymentMethod) {
+      toast.error("Please select a payment mode");
+      return;
+    }
 
     try {
       const newPaidAmount =
@@ -331,7 +391,8 @@ const PurchaseItem = () => {
           {
             ...purchaseDetails,
             total_price: grandTotal,
-            paid_amount: newPaidAmount, // ✅ updated amount send kar rahe
+            paid_amount: newPaidAmount,
+            paymenttype: extraPaymentMethod,
           },
         ],
         itemdetails: items.map((item) => ({
@@ -356,6 +417,7 @@ const PurchaseItem = () => {
       getPurchaseData(); // backend se fresh data bhi aa jaayega
       setShowPaymentModal(false);
       setExtraPayment("");
+      setExtraPaymentMethod("");
     } catch (error) {
       toast.error("Payment failed");
       console.error(error);
@@ -419,6 +481,7 @@ const PurchaseItem = () => {
           .substring(0, 10),
         paid_amount: data.purchaseitem[0].paid_amount,
       });
+      setSelectedMethod(data.purchaseitem[0].paymentTypeid ?? 1);
 
       // Logging the updated purchase details after setting state might still show old values
       console.log("Updated purchase details being set:", {
@@ -455,6 +518,32 @@ const PurchaseItem = () => {
       setIsModalOpen(true);
     });
   };
+
+  const handleQuickPayment = (purID) => {
+    setEditId(purID);
+    axios.get(`${API_BASE_URL}/getupdate/${purID}`, { headers: { Authorization: token } })
+      .then((response) => {
+        const data = response.data.data;
+        setPurchaseDetails({
+          savedby: data.purchaseitem[0].savedby,
+          suplierID: data.purchaseitem[0].suplierID,
+          invoiceid: data.purchaseitem[0].invoiceid,
+          details: data.purchaseitem[0].details,
+          purchasedate: new Date(data.purchaseitem[0].purchasedate).toISOString().substring(0, 10),
+          purchaseexpiredate: new Date(data.purchaseitem[0].purchaseexpiredate).toISOString().substring(0, 10),
+          paid_amount: data.purchaseitem[0].paid_amount,
+        });
+        const totalAmount = data.itemdetails.reduce((sum, item) => {
+          return sum + Number(item.totalprice) * Number(item.quantity);
+        }, 0);
+        setGrandTotal(totalAmount.toFixed(2));
+        setExtraPayment("");
+        setExtraPaymentMethod("");
+        setShowPaymentModal(true);
+      })
+      .catch(() => toast.error("Failed to load purchase details"));
+  };
+
   // Adding new rows
   const addRow = () => {
     setItems([
@@ -647,18 +736,23 @@ const PurchaseItem = () => {
 
             <div className=" flex justify-between mt-11">
               <span></span>
-              <HasPermission module="Purchase Item" action="create">
+              <div className="flex gap-x-2">
                 <button
-                  onClick={() => {
-                    navigate("/add-purchase");
-                  }}
-                  className=" bg-[#4CBBA1] h-[46px] w-[165px] rounded-sm  flex justify-center items-center
-               gap-x-1 text-white font-semibold"
+                  onClick={() => { setShowImportModal(true); setImportResult(null); }}
+                  className="bg-[#1C1D3E] h-[46px] px-4 rounded-sm flex justify-center items-center gap-x-1 text-white font-semibold"
                 >
-                  <IoIosAddCircleOutline className=" font-semibold text-lg" />
-                  Add Purchase
+                  Import
                 </button>
-              </HasPermission>
+                <HasPermission module="Purchase Item" action="create">
+                  <button
+                    onClick={() => { navigate("/add-purchase"); }}
+                    className=" bg-[#4CBBA1] h-[46px] w-[165px] rounded-sm  flex justify-center items-center gap-x-1 text-white font-semibold"
+                  >
+                    <IoIosAddCircleOutline className=" font-semibold text-lg" />
+                    Add Purchase
+                  </button>
+                </HasPermission>
+              </div>
             </div>
             {/* Search Bar */}
             <div className=" mt-11  w-full">
@@ -787,6 +881,12 @@ const PurchaseItem = () => {
                                 {row.total_price}
                               </td>
                               <td className="py-2 px-4 border border-[#4CBBA1]">
+                                {parseFloat(row.paid_amount || 0).toFixed(2)}
+                              </td>
+                              <td className={`py-2 px-4 border border-[#4CBBA1] font-semibold ${parseFloat(row.total_price || 0) - parseFloat(row.paid_amount || 0) > 0 ? "text-red-500" : "text-green-600"}`}>
+                                {(parseFloat(row.total_price || 0) - parseFloat(row.paid_amount || 0)).toFixed(2)}
+                              </td>
+                              <td className="py-2 px-4 border border-[#4CBBA1]">
                                 <div className="flex justify-center font-bold">
                                   <HasPermission
                                     module="Purchase Item"
@@ -813,6 +913,16 @@ const PurchaseItem = () => {
                                       <FaHistory />
                                     </button>
                                   </Tooltip>
+                                  {parseFloat(row.total_price || 0) - parseFloat(row.paid_amount || 0) > 0 && (
+                                    <Tooltip message="Make Payment">
+                                      <button
+                                        onClick={() => handleQuickPayment(row.purID)}
+                                        className="bg-orange-500 p-1 rounded-sm text-white hover:scale-105"
+                                      >
+                                        <IoWalletOutline />
+                                      </button>
+                                    </Tooltip>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1327,6 +1437,21 @@ const PurchaseItem = () => {
               Remaining:{" "}
               <span className="font-bold">{remainingAmount.toFixed(2)}</span>
             </p>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Payment Mode*
+            </label>
+            <select
+              value={extraPaymentMethod}
+              onChange={(e) => setExtraPaymentMethod(e.target.value)}
+              className="block w-full p-2 mb-3 text-sm border border-gray-300 rounded-md focus:ring-1 focus:ring-green-500 focus:border-green-500"
+            >
+              <option value="">Select payment mode</option>
+              {paymentMethod.map((method) => (
+                <option key={method.payment_method_id} value={method.payment_method_id}>
+                  {method.payment_method}
+                </option>
+              ))}
+            </select>
             <input
               type="number"
               placeholder="Enter amount"
@@ -1336,7 +1461,7 @@ const PurchaseItem = () => {
             />
             <div className="flex justify-end space-x-2">
               <button
-                onClick={() => setShowPaymentModal(false)}
+                onClick={() => { setShowPaymentModal(false); setExtraPaymentMethod(""); setExtraPayment(""); }}
                 className="px-4 py-2 bg-gray-400 text-white rounded-lg"
               >
                 Cancel
@@ -1416,6 +1541,39 @@ const PurchaseItem = () => {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-[480px] shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Import Purchase Items</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-gray-500 hover:text-gray-700 text-xl font-bold">×</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-1">
+              Rows with the same Invoice_Number are grouped into one purchase. Payment_Type: 0=Cash, 1=Bank.
+            </p>
+            <a href="/purchase_item_import_sample.csv" download className="text-blue-600 underline text-sm mb-3 inline-block">
+              Download Sample CSV
+            </a>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleImportDrop}
+              onClick={() => importInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer mb-4 ${isDragging ? "border-[#4CBBA1] bg-green-50" : "border-gray-300"}`}
+            >
+              <p className="text-gray-500">{importLoading ? "Processing..." : "Drag & drop CSV/XLSX or click to browse"}</p>
+              <input ref={importInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { if (e.target.files[0]) processImportFile(e.target.files[0]); }} />
+            </div>
+            {importResult && (
+              <div className="text-sm bg-gray-100 rounded p-3">
+                <p>Imported: <strong>{importResult.imported}</strong></p>
+                <p>Skipped: <strong>{importResult.skipped}</strong></p>
+              </div>
+            )}
           </div>
         </div>
       )}

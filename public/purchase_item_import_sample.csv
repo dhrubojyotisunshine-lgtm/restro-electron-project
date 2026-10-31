@@ -1,0 +1,4 @@
+Invoice_Number,Supplier_Name,Payment_Type,Purchase_Date,Expire_Date,Paid_Amount,Details,Ingredient_Name,Quantity,Rate
+INV-001,Fresh Foods Ltd,0,2024-01-15,2024-06-15,500,Monthly stock,Sugar,10,50
+INV-001,Fresh Foods Ltd,0,2024-01-15,2024-06-15,500,Monthly stock,Salt,5,20
+INV-002,Green Farms,0,2024-01-16,2024-06-16,300,Weekly stock,Wheat Flour,20,15

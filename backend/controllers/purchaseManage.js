@@ -111,6 +111,7 @@ const getPurchaseItemDetails = (req, res) => {
           s.supName AS suppliername,
           p.purchasedate,
           p.total_price,
+          p.paid_amount,
           p.invoiceid
         FROM purchaseitem p
         LEFT JOIN supplier s
@@ -3449,13 +3450,13 @@ const getPurchaseTransactions = (req, res) => {
         CASE WHEN s.d_c = 'd' THEN s.amount ELSE 0 END AS debit_amount
       FROM supplier_ledger s
       LEFT JOIN supplier si ON s.supplier_id = si.supid
-      WHERE si.created_by = ?
+      WHERE CAST(si.created_by AS INTEGER) = ?
     `;
     const queryParams = [creatorId];
 
     if (supplier_id) {
-      query += " AND s.supplier_id = ?";
-      queryParams.push(String(supplier_id));
+      query += " AND CAST(s.supplier_id AS INTEGER) = ?";
+      queryParams.push(Number(supplier_id));
     }
 
     if (startDate && endDate) {
@@ -3623,6 +3624,211 @@ const getReturnItemInfoByID = (req, res) => {
   }); // resolveCreatorId
 };
 
+const importSuppliers = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  const checkSub = `SELECT * FROM superadmin_user_plans WHERE user_id = ?`;
+  db.get(checkSub, [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get(checkSub, [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    let imported = 0, skipped = 0, index = 0;
+    const now = new Date().toISOString().split("T")[0];
+    const emailRegex = /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i;
+
+    function processNext() {
+      if (index >= rows.length) return res.json({ success: true, imported, skipped });
+      const row = rows[index++];
+      const supName = (row.Supplier_Name || "").trim();
+      const supEmail = (row.Email || "").trim();
+      const supMobile = (row.Mobile || "").toString().trim();
+      const supAddress = (row.Address || "").trim();
+      const amount = parseFloat(row.Opening_Balance) || 0;
+
+      if (!supName || !supEmail || !supMobile || !supAddress) { skipped++; return processNext(); }
+      if (!emailRegex.test(supEmail)) { skipped++; return processNext(); }
+      if (!/^\d{10}$/.test(supMobile)) { skipped++; return processNext(); }
+
+      db.get("SELECT supid FROM supplier WHERE supName = ? AND created_by = ?", [supName, creator_id], (err, existing) => {
+        if (err || existing) { skipped++; return processNext(); }
+        db.all("SELECT suplier_code FROM supplier WHERE created_by = ? ORDER BY suplier_code DESC LIMIT 1", [creator_id], (err, results) => {
+          let newCode;
+          if (results && results.length > 0 && results[0].suplier_code) {
+            const num = parseInt(results[0].suplier_code.split("_")[1]) + 1;
+            newCode = `sup_${num.toString().padStart(3, "0")}`;
+          } else {
+            newCode = "sup_001";
+          }
+          db.run(
+            "INSERT INTO supplier (suplier_code, supName, supEmail, supMobile, supAddress, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+            [newCode, supName, supEmail, supMobile, supAddress, creator_id],
+            function(err) {
+              if (err) { skipped++; return processNext(); }
+              const supplierId = this.lastID;
+              db.run(
+                "INSERT INTO supplier_ledger (supplier_id, amount, date, description, chalan_no, transaction_id, status, d_c) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [supplierId, amount, now, "Previous adjustment with software", "Adjustment", newCode, 1, "c"],
+                function(err) {
+                  if (err) { skipped++; return processNext(); }
+                  imported++;
+                  processNext();
+                }
+              );
+            }
+          );
+        });
+      });
+    }
+    processNext();
+  }
+};
+
+const importPurchaseItems = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  const checkSub = `SELECT * FROM superadmin_user_plans WHERE user_id = ?`;
+  db.get(checkSub, [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get(checkSub, [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    db.all("SELECT supid, supName FROM supplier WHERE created_by = ?", [creator_id], (err, suppliers) => {
+      if (err) return res.status(500).json({ success: false, message: err.message });
+      db.all("SELECT id, ingredient_name FROM ingredients WHERE created_by = ?", [creator_id], (err, ingredients) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+
+        const supplierMap = {};
+        suppliers.forEach(s => { supplierMap[s.supName.toLowerCase()] = s.supid; });
+        const ingredientMap = {};
+        ingredients.forEach(i => { ingredientMap[i.ingredient_name.toLowerCase()] = i.id; });
+
+        const invoiceGroups = {};
+        rows.forEach(row => {
+          const inv = (row.Invoice_Number || "").toString().trim();
+          if (!inv) return;
+          if (!invoiceGroups[inv]) invoiceGroups[inv] = [];
+          invoiceGroups[inv].push(row);
+        });
+
+        const invoiceKeys = Object.keys(invoiceGroups);
+        let imported = 0, skipped = 0, invoiceIndex = 0;
+
+        function processNextInvoice() {
+          if (invoiceIndex >= invoiceKeys.length) return res.json({ success: true, imported, skipped });
+          const invoiceNum = invoiceKeys[invoiceIndex++];
+          const group = invoiceGroups[invoiceNum];
+          const first = group[0];
+
+          const supplierName = (first.Supplier_Name || "").trim();
+          const paymentType = first.Payment_Type !== undefined ? parseInt(first.Payment_Type) : 0;
+          const purchaseDate = (first.Purchase_Date || "").trim();
+          const expireDate = (first.Expire_Date || "").trim();
+          const paidAmount = parseFloat(first.Paid_Amount) || 0;
+          const details = (first.Details || "").trim();
+
+          if (!invoiceNum || !supplierName || !purchaseDate) { skipped++; return processNextInvoice(); }
+          const supid = supplierMap[supplierName.toLowerCase()];
+          if (!supid) { skipped++; return processNextInvoice(); }
+
+          db.get("SELECT purID FROM purchaseitem WHERE invoiceid = ? AND savedby = ?", [invoiceNum, creator_id], (err, existing) => {
+            if (err || existing) { skipped++; return processNextInvoice(); }
+
+            const validItems = group.filter(row => {
+              const ingName = (row.Ingredient_Name || "").trim().toLowerCase();
+              const qty = parseFloat(row.Quantity);
+              const rate = parseFloat(row.Rate);
+              return ingName && qty > 0 && rate > 0 && ingredientMap[ingName];
+            });
+
+            if (validItems.length === 0) { skipped++; return processNextInvoice(); }
+
+            const totalPrice = validItems.reduce((sum, row) => sum + (parseFloat(row.Quantity) * parseFloat(row.Rate)), 0);
+
+            db.run(
+              "INSERT INTO purchaseitem (invoiceid, paymenttype, total_price, paid_amount, details, purchasedate, purchaseexpiredate, savedby, bankid, suplierID) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [invoiceNum, paymentType, totalPrice, paidAmount, details, purchaseDate, expireDate || null, creator_id, null, supid],
+              function(err) {
+                if (err) { skipped++; return processNextInvoice(); }
+                const purID = this.lastID;
+
+                let itemIndex = 0;
+                function processNextItem() {
+                  if (itemIndex >= validItems.length) {
+                    db.run(
+                      "INSERT INTO supplier_ledger (amount, transaction_id, description, chalan_no, payment_type, status, d_c, date, supplier_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      [totalPrice, invoiceNum, details || "Purchase", invoiceNum, paymentType, 1, "c", purchaseDate, supid],
+                      function(err) {
+                        db.run(
+                          "INSERT INTO supplier_ledger (amount, transaction_id, description, chalan_no, payment_type, status, d_c, date, supplier_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          [paidAmount, invoiceNum, `Purchase From Supplier ${details}`, invoiceNum, paymentType, 1, "d", purchaseDate, supid],
+                          function(err) {
+                            imported++;
+                            processNextInvoice();
+                          }
+                        );
+                      }
+                    );
+                    return;
+                  }
+                  const item = validItems[itemIndex++];
+                  const ingId = ingredientMap[(item.Ingredient_Name || "").trim().toLowerCase()];
+                  const qty = parseFloat(item.Quantity);
+                  const rate = parseFloat(item.Rate);
+                  db.run(
+                    "INSERT INTO purchase_details (purchaseid, indredientid, quantity, price, totalprice, purchasedate, purchaseexpiredate, purchaseby) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [purID, ingId, qty, rate, qty * rate, purchaseDate, expireDate || null, creator_id],
+                    function(err) {
+                      if (err) return processNextItem();
+                      db.run("UPDATE ingredients SET stock_qty = stock_qty + ? WHERE id = ?", [qty, ingId], function() {
+                        processNextItem();
+                      });
+                    }
+                  );
+                }
+                processNextItem();
+              }
+            );
+          });
+        }
+        processNextInvoice();
+      });
+    });
+  }
+};
+
 const getPurchaseHistory = (req, res) => {
   const { purchaseid } = req.params;
   const userId = req.id;
@@ -3685,4 +3891,6 @@ module.exports = {
   getPurchaseTransactions,
   getReturnItemInfoByID,
   getPurchaseHistory,
+  importSuppliers,
+  importPurchaseItems,
 };

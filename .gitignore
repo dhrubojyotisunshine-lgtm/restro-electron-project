@@ -1,1 +1,14 @@
 node_modules
+
+# build outputs / installers / local scratch (not needed to run the project)
+out/
+electron_zip/
+*.msi
+backend/temp/
+backend/_email_config.js
+database1.sqlite
+backend/database1.sqlite
+local-shm
+local-wal
+backend/local-shm
+backend/local-wal

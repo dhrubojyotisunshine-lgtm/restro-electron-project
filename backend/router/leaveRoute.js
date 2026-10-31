@@ -30,4 +30,5 @@ router.get('/leaveapply',verifyToken, leaveController.getLeaveApplies);
 router.put('/leaveapply/:id', leaveController.updateLeaveApply);
 router.delete('/leaveapply/:id', leaveController.deleteLeaveApply);
 router.get('/leaveapply/:id', leaveController.getLeaveApplyById);
+router.post('/holidays/import', verifyToken, leaveController.importHolidays);
 module.exports = router;

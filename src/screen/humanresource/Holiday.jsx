@@ -52,6 +52,11 @@ const Holiday = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [deleteModalId, setDeleteModalId] = useState(null);
+  const importInputRef = useRef(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const holidayNameRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
@@ -121,6 +126,62 @@ const Holiday = () => {
         console.log(error);
         toast.error("Error in adding holiday data.");
       });
+  };
+
+  const processImportFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    let rows = [];
+    try {
+      if (ext === "csv") {
+        const text = await file.text();
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        rows = result.data;
+      } else if (ext === "xlsx" || ext === "xls") {
+        const { default: ExcelJSLib } = await import("exceljs");
+        const workbook = new ExcelJSLib.Workbook();
+        const buffer = await file.arrayBuffer();
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0];
+        const headers = [];
+        worksheet.getRow(1).eachCell((cell) => headers.push(cell.value));
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return;
+          const obj = {};
+          row.eachCell((cell, colNumber) => {
+            obj[headers[colNumber - 1]] = cell.value;
+          });
+          rows.push(obj);
+        });
+      } else {
+        toast.error("Only CSV or XLSX files are supported.");
+        return;
+      }
+    } catch (err) {
+      toast.error("Failed to parse file.");
+      return;
+    }
+    setImportLoading(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/holidays/import`,
+        { rows },
+        { headers: { Authorization: token } }
+      );
+      setImportResult(res.data);
+      getallholiday();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Import failed.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    processImportFile(file);
   };
 
   const getallholiday = async () => {
@@ -405,18 +466,26 @@ const handleSubmit2 = (e) => {
             </div>
             <div className=" flex justify-between">
               <span></span>
-              <HasPermission module="Holiday" action="create">
+              <div className="flex gap-x-2 mt-10">
                 <button
-                  onClick={() => {
-                    setIsModalOpen(true);
-                  }}
-                  className=" bg-[#4CBBA1] h-[46px] w-[165px]  mt-10 rounded-sm  flex justify-center items-center
-             gap-x-1 text-white font-semibold"
+                  onClick={() => { setShowImportModal(true); setImportResult(null); }}
+                  className="bg-[#1C1D3E] h-[46px] px-4 rounded-sm flex justify-center items-center gap-x-1 text-white font-semibold"
                 >
-                  <IoIosAddCircleOutline className=" font-semibold text-lg" />
-                  Add Holidays
+                  Import
                 </button>
-              </HasPermission>
+                <HasPermission module="Holiday" action="create">
+                  <button
+                    onClick={() => {
+                      setIsModalOpen(true);
+                    }}
+                    className=" bg-[#4CBBA1] h-[46px] w-[165px] rounded-sm  flex justify-center items-center
+             gap-x-1 text-white font-semibold"
+                  >
+                    <IoIosAddCircleOutline className=" font-semibold text-lg" />
+                    Add Holidays
+                  </button>
+                </HasPermission>
+              </div>
             </div>
             <div className=" mt-11  w-full">
               <section className=" tablebutton">
@@ -838,6 +907,55 @@ const handleSubmit2 = (e) => {
         onClose={handleModalClose}
         onDelete={handleModalDelete}
       />
+
+      {showImportModal && (
+        <>
+          <div className="justify-center items-center flex overflow-x-hidden overflow-y-auto fixed inset-0 z-50 outline-none focus:outline-none">
+            <div className="relative w-[480px] mx-auto">
+              <div className="border-0 rounded-lg shadow-lg relative flex flex-col w-full bg-white outline-none focus:outline-none p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-[#1C1D3E]">Import Holidays</h3>
+                  <button onClick={() => { setShowImportModal(false); setImportResult(null); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">&times;</button>
+                </div>
+                {!importResult ? (
+                  <>
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleImportDrop}
+                      onClick={() => importInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${isDragging ? "border-[#4CBBA1] bg-green-50" : "border-gray-300 hover:border-[#4CBBA1]"}`}
+                    >
+                      <p className="text-gray-500 mb-2">Drag & drop a CSV or XLSX file here</p>
+                      <p className="text-gray-400 text-sm">or click to browse</p>
+                      <input ref={importInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files[0]; if (f) processImportFile(f); e.target.value = ""; }} />
+                    </div>
+                    {importLoading && <p className="text-center text-[#4CBBA1] mt-4">Importing...</p>}
+                    <div className="mt-4 text-sm text-gray-500">
+                      <p className="font-medium mb-1">Required columns: Holiday_Name, Start_Date, End_Date, No_Of_Days</p>
+                      <a href="/holiday_import_sample.csv" download className="text-[#4CBBA1] underline">Download sample CSV</a>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <div className={`rounded p-4 mb-4 ${importResult.imported > 0 ? "bg-green-50 border border-green-200" : "bg-yellow-50 border border-yellow-200"}`}>
+                      <p className="font-semibold text-green-700">Imported: {importResult.imported}</p>
+                      <p className="font-semibold text-yellow-700">Skipped: {importResult.skipped}</p>
+                    </div>
+                    {importResult.errors?.length > 0 && (
+                      <div className="max-h-40 overflow-y-auto text-sm text-red-600">
+                        {importResult.errors.map((e, i) => <p key={i}>{e}</p>)}
+                      </div>
+                    )}
+                    <button onClick={() => { setShowImportModal(false); setImportResult(null); }} className="mt-4 w-full bg-[#1C1D3E] text-white py-2 rounded hover:bg-[#2a2b50]">Close</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="opacity-50 fixed inset-0 z-40 bg-gray-800"></div>
+        </>
+      )}
     </>
   );
 };

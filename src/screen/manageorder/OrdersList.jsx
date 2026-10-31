@@ -184,13 +184,14 @@ const OrdersList = () => {
   const componentRef = useRef();
 
   const handlePrint = useReactToPrint({
-    content: () => componentRef.current,
+    contentRef: componentRef,
   });
 
   const showBillDetails = async (order_id) => {
     try {
       const response = await axios.get(
         `${API_BASE_URL}/getOrderById/${order_id}`,
+        { headers: { Authorization: token } }
       );
       setBillData([response.data]); // Set the data first
       console.log("Bill me daal na h ye data ", response.data);
@@ -207,6 +208,7 @@ const OrdersList = () => {
     try {
       const response = await axios.get(
         `${API_BASE_URL}/getOrderById/${order_id}`,
+        { headers: { Authorization: token } }
       );
       setInvoiceData([response.data]);
       setInvoiceDataModal(true);
@@ -217,7 +219,7 @@ const OrdersList = () => {
 
   const showPaynment = (order_id) => {
     axios
-      .get(`${API_BASE_URL}/getOrderById/${order_id}`)
+      .get(`${API_BASE_URL}/getOrderById/${order_id}`, { headers: { Authorization: token } })
       .then((response) => {
         setPaymentData(response.data);
         setPaynmentModal(true);
@@ -260,7 +262,7 @@ const OrdersList = () => {
         .post(
           `${API_BASE_URL}/cancelOrder/${order_id}`,
           { anyreason },
-          { headers: { "Content-Type": "application/json" } },
+          { headers: { "Content-Type": "application/json", Authorization: localStorage.getItem("token") } },
         )
         .then((response) => {
           console.log(response.data);

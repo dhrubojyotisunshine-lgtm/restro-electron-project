@@ -29,7 +29,7 @@ export const InvoiceDialogBox2 = React.forwardRef((props, ref) => {
     return <div>There is nothing to print</div>; // Handle empty data scenario
   }
 
-  const orderDetails = billData[0]?.orderDetails[0];
+  const orderDetails = billData[0]?.orderDetails?.[0];
   const menuItems = billData[0]?.menuItems;
 
 
@@ -37,8 +37,8 @@ export const InvoiceDialogBox2 = React.forwardRef((props, ref) => {
     const num = parseFloat(amount);
     return isNaN(num) ? "0.00" : num.toFixed(2);
   };
-  const logoUrls = (data || []).map((val) => `${VITE_IMG_URL}${val.logo}`);
-  const logoUrls2 = (data || []).map((val) => `${VITE_IMG_URL}${val.logo_footer}`);
+  const logoUrl = data?.logo ? `${VITE_IMG_URL}${data.logo}` : null;
+  const logoUrl2 = data?.logo_footer ? `${VITE_IMG_URL}${data.logo_footer}` : null;
 
 
 
@@ -67,7 +67,7 @@ export const InvoiceDialogBox2 = React.forwardRef((props, ref) => {
         </tr>
       </thead>
       <tbody>
-        {menuItems?.map((item) => (
+        {Array.isArray(menuItems) && menuItems.map((item) => (
           <tr key={item.row_id}>
             <td style={{ padding: '8px' }}>{item.ProductName} ({item.variantName})</td>
             <td style={{ padding: '8px' }}>{item.menuqty}</td>

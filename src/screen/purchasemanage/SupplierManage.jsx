@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import Nav from "../../components/Nav";
 import Hamburger from "hamburger-react";
 import { IoMdNotifications, IoIosAddCircleOutline } from "react-icons/io";
@@ -49,6 +49,11 @@ const SupplierManage = () => {
   const [cModal, setCmodal] = useState(false);
   const [deleteModalId, setDeleteModalId] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const importInputRef = useRef(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [searchName, setSearchName] = useState("");
@@ -167,6 +172,55 @@ const [errors, setErrors] = useState({
     } catch (error) {
       console.log(error);
     }
+  };
+
+  const processImportFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      let rows = [];
+      if (ext === "csv") {
+        const text = await file.text();
+        const parsed = await new Promise((resolve) => {
+          Papa.parse(text, { header: true, skipEmptyLines: true, complete: resolve });
+        });
+        rows = parsed.data;
+      } else if (ext === "xlsx" || ext === "xls") {
+        const ExcelJS = (await import("exceljs")).default;
+        const wb = new ExcelJS.Workbook();
+        const buffer = await file.arrayBuffer();
+        await wb.xlsx.load(buffer);
+        const ws = wb.worksheets[0];
+        const headers = [];
+        ws.getRow(1).eachCell((cell) => headers.push(cell.value));
+        ws.eachRow((row, rowNum) => {
+          if (rowNum === 1) return;
+          const obj = {};
+          row.eachCell((cell, colNum) => { obj[headers[colNum - 1]] = cell.value; });
+          rows.push(obj);
+        });
+      } else {
+        toast.error("Only CSV, XLSX, XLS files are supported.");
+        setImportLoading(false);
+        return;
+      }
+      const res = await axios.post(`${API_BASE_URL}/suppliers/import`, { rows }, { headers: { Authorization: token } });
+      setImportResult(res.data);
+      if (res.data.imported > 0) { getSupplierData(); toast.success(`Imported: ${res.data.imported}`); }
+      if (res.data.skipped > 0) toast.warn(`Skipped: ${res.data.skipped}`);
+    } catch (err) {
+      toast.error("Import failed: " + (err.response?.data?.message || err.message));
+    }
+    setImportLoading(false);
+  };
+
+  const handleImportDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processImportFile(file);
   };
 
   // delete
@@ -507,16 +561,23 @@ const handleSearch = (e) => {
 
             <div className=" flex justify-between mt-11">
               <span></span>
-              <HasPermission module="Supplier Manage" action="create">
+              <div className="flex gap-x-2">
                 <button
-                  onClick={() => setCmodal(true)}
-                  className=" bg-[#4CBBA1] h-[46px] w-[165px] rounded-sm  flex justify-center items-center
-               gap-x-1 text-white font-semibold"
+                  onClick={() => { setShowImportModal(true); setImportResult(null); }}
+                  className="bg-[#1C1D3E] h-[46px] px-4 rounded-sm flex justify-center items-center gap-x-1 text-white font-semibold"
                 >
-                  <IoIosAddCircleOutline className=" font-semibold text-lg" />
-                  Add Supplier
+                  Import
                 </button>
-              </HasPermission>
+                <HasPermission module="Supplier Manage" action="create">
+                  <button
+                    onClick={() => setCmodal(true)}
+                    className=" bg-[#4CBBA1] h-[46px] w-[165px] rounded-sm  flex justify-center items-center gap-x-1 text-white font-semibold"
+                  >
+                    <IoIosAddCircleOutline className=" font-semibold text-lg" />
+                    Add Supplier
+                  </button>
+                </HasPermission>
+              </div>
             </div>
             {/* Search Bar */}
             <div className=" mt-11  w-full">
@@ -940,6 +1001,37 @@ const handleSearch = (e) => {
           </form>
         </div>
       </DialogBoxSmall>
+
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-[480px] shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold">Import Suppliers</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-gray-500 hover:text-gray-700 text-xl font-bold">×</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-1">Required: Supplier_Name, Email, Mobile (10 digits), Address. Mobile must be exactly 10 digits.</p>
+            <a href="/supplier_import_sample.csv" download className="text-blue-600 underline text-sm mb-3 inline-block">
+              Download Sample CSV
+            </a>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleImportDrop}
+              onClick={() => importInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer mb-4 ${isDragging ? "border-[#4CBBA1] bg-green-50" : "border-gray-300"}`}
+            >
+              <p className="text-gray-500">{importLoading ? "Processing..." : "Drag & drop CSV/XLSX or click to browse"}</p>
+              <input ref={importInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { if (e.target.files[0]) processImportFile(e.target.files[0]); }} />
+            </div>
+            {importResult && (
+              <div className="text-sm bg-gray-100 rounded p-3">
+                <p>Imported: <strong>{importResult.imported}</strong></p>
+                <p>Skipped: <strong>{importResult.skipped}</strong></p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 };

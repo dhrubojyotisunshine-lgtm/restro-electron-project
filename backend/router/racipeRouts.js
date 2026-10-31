@@ -23,7 +23,7 @@ router.get("/productiondetail/:foodid/:pvarientid", verifyToken, recipecontrolle
 router.get("/viewproductiondetail/:foodid/:pvarientid", verifyToken, recipecontroller.viewProductiondetails);
 router.put("/productiondetail/:foodnameid/:pvarientnameid", verifyToken, recipecontroller.updateProductionDetail);
 router.delete("/productiondetail/:foodid/:pvarientid", verifyToken, recipecontroller.deleteProductionData);
-
 router.get("/productiondetails", verifyToken, recipecontroller.getProductionDetails);
+router.post("/productionsets/import", verifyToken, recipecontroller.importProductionSets);
 
 module.exports = router;

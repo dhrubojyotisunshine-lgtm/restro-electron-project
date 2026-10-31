@@ -38,5 +38,6 @@ router.put(
   menuController.updateMenuType,
 );
 router.delete("/menutype/:id", menuController.deleteMenuType);
+router.post("/menutype/import", verifyToken, menuController.importMenuTypes);
 
 module.exports = router;

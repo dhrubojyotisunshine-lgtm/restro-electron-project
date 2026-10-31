@@ -942,9 +942,13 @@ const createproductiondata = async (req, res) => {
       const existingRecords = await queryDb(checkQuery, [foodid, pvarientid]);
 
       if (existingRecords.length > 0) {
+        const foodRow = await queryDb("SELECT ProductName FROM item_foods WHERE ProductsID = ?", [foodid]);
+        const variantRow = await queryDb("SELECT variantName FROM variant WHERE variantid = ?", [pvarientid]);
+        const foodName = foodRow[0]?.ProductName || `Food #${foodid}`;
+        const variantName = variantRow[0]?.variantName || `Variant #${pvarientid}`;
         return res.status(400).json({
           success: false,
-          message: `Production details already exist for foodid ${foodid} and pvarientid ${pvarientid}`,
+          message: `Production details for '${foodName} - ${variantName}' already exist. Please edit the existing record instead of creating a new one.`,
         });
       }
 
@@ -1548,6 +1552,93 @@ const getProductionDetails = async (req, res) => {
   }
 };
 
+const importProductionSets = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    // Group rows by Food_Name + Variant_Name
+    const groups = {};
+    for (const row of rows) {
+      const key = `${(row.Food_Name || "").trim()}|||${(row.Variant_Name || "").trim()}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(row);
+    }
+
+    const groupKeys = Object.keys(groups);
+    let imported = 0, skipped = 0, gIndex = 0;
+    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+    function processNextGroup() {
+      if (gIndex >= groupKeys.length) return res.json({ success: true, imported, skipped });
+      const key = groupKeys[gIndex++];
+      const groupRows = groups[key];
+      const food_name = (groupRows[0].Food_Name || "").trim();
+      const variant_name = (groupRows[0].Variant_Name || "").trim();
+
+      if (!food_name || !variant_name) { skipped += groupRows.length; return processNextGroup(); }
+
+      db.get("SELECT ProductsID FROM item_foods WHERE ProductName = ? AND UserIDInserted = ?", [food_name, creator_id], (err, food) => {
+        if (err || !food) { skipped += groupRows.length; return processNextGroup(); }
+        const foodid = food.ProductsID;
+
+        db.get("SELECT variantid FROM variant WHERE variantName = ? AND menuid = ?", [variant_name, foodid], (err, variant) => {
+          if (err || !variant) { skipped += groupRows.length; return processNextGroup(); }
+          const pvarientid = variant.variantid;
+
+          db.get("SELECT foodid FROM production_details WHERE foodid = ? AND pvarientid = ?", [foodid, pvarientid], (err, existing) => {
+            if (err || existing) { skipped += groupRows.length; return processNextGroup(); }
+
+            let rIndex = 0;
+            function processNextRow() {
+              if (rIndex >= groupRows.length) { imported++; return processNextGroup(); }
+              const row = groupRows[rIndex++];
+              const ingredient_name = (row.Ingredient_Name || "").trim();
+              const qty = row.Quantity;
+
+              if (!ingredient_name || !qty) { skipped++; return processNextRow(); }
+
+              db.get("SELECT id FROM ingredients WHERE ingredient_name = ? AND created_by = ?", [ingredient_name, creator_id], (err, ing) => {
+                if (err || !ing) { skipped++; return processNextRow(); }
+                db.run(
+                  "INSERT INTO production_details (foodid, pvarientid, ingredientid, qty, createdby, created_date) VALUES (?, ?, ?, ?, ?, ?)",
+                  [foodid, pvarientid, ing.id, parseFloat(qty), creator_id, now],
+                  function(err) {
+                    if (err) { skipped++; return processNextRow(); }
+                    processNextRow();
+                  }
+                );
+              });
+            }
+            processNextRow();
+          });
+        });
+      });
+    }
+    processNextGroup();
+  }
+};
+
 module.exports = {
   getalldetailsProductiondetails,
   foodWithVariant,
@@ -1563,4 +1654,5 @@ module.exports = {
   getAllStockIngredientswithone,
   viewProductiondetails,
   deleteProductionData,
+  importProductionSets,
 };

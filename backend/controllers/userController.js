@@ -91,9 +91,56 @@ const addUser = async (req, res) => {
         created_by = loggedInUser.created_by;
       }
 
+      // 🚫 Check user limit from subscription plan (uses live count from last sync)
+      db.get(
+        "SELECT plan_id FROM superadmin_user_plans WHERE user_id = ? AND package_status = 'approved' ORDER BY user_plan_id DESC LIMIT 1",
+        [created_by],
+        (err, subRow) => {
+          if (err || !subRow) return proceedToAddUser();
+          db.get(
+            "SELECT number_of_active_users FROM subscription_plans WHERE plan_id = ?",
+            [subRow.plan_id],
+            (err2, planRow) => {
+              if (err2 || !planRow) return proceedToAddUser();
+              const userLimit = planRow.number_of_active_users;
+              if (userLimit === 0) return proceedToAddUser(); // 0 = unlimited
+              db.get(
+                "SELECT COUNT(*) AS totalUsers FROM user WHERE created_by = ?",
+                [created_by],
+                (err3, countRow) => {
+                  if (err3) return proceedToAddUser();
+                  const localCount = countRow?.totalUsers ?? 0;
+                  db.get(
+                    "SELECT live_user_count, synced_user_count FROM restaurant_settings WHERE user_id = ? ORDER BY live_user_count DESC LIMIT 1",
+                    [created_by],
+                    (err4, usageRow) => {
+                      if (err4) return proceedToAddUser();
+                      const liveCount = usageRow?.live_user_count ?? 0;
+                      const syncedCount = usageRow?.synced_user_count ?? 0;
+                      // unsynced = main users added after last fallback login (not yet in local DB)
+                      const unsynced = Math.max(0, liveCount - syncedCount);
+                      const totalCombined = localCount + unsynced;
+                      console.log("[UserLimit] local:", localCount, "| synced:", syncedCount, "| live:", liveCount, "| unsynced:", unsynced, "| total:", totalCombined, "| limit:", userLimit);
+                      if (totalCombined >= userLimit) {
+                        return res.status(403).json({
+                          success: false,
+                          error: "User creation limit reached for your plan",
+                        });
+                      }
+                      proceedToAddUser();
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+
+      function proceedToAddUser() {
       const checkEmailQuery = `
-        SELECT COUNT(*) AS count 
-        FROM user 
+        SELECT COUNT(*) AS count
+        FROM user
         WHERE email = ?
       `;
 
@@ -160,6 +207,42 @@ const addUser = async (req, res) => {
             });
           }
 
+          // Fire-and-forget: push net electron-added user count to main website
+          (async () => {
+            try {
+              // synced_user_count = how many subUsers were physically inserted at last fallback login
+              const usageRow = await new Promise((r) =>
+                db.get(
+                  "SELECT synced_user_count FROM restaurant_settings WHERE user_id = ? ORDER BY synced_user_count DESC LIMIT 1",
+                  [created_by],
+                  (e, row) => r(row)
+                )
+              );
+              const liveAtLogin = usageRow?.synced_user_count ?? 0;
+
+              const countRow = await new Promise((r) =>
+                db.get(
+                  "SELECT COUNT(*) AS c FROM user WHERE created_by = ?",
+                  [created_by],
+                  (e, row) => r(row)
+                )
+              );
+              const localCount = countRow?.c ?? 0;
+              // Only push users added ON Electron (subtract synced-from-main users)
+              const electronAdded = Math.max(0, localCount - liveAtLogin);
+              console.log("[ElectronSync] localCount:", localCount, "| liveAtLogin:", liveAtLogin, "| electronAdded:", electronAdded, "| user_id:", created_by);
+
+              const resp = await axios.post(
+                "https://krayon.softwarestesting.co.in/api/update-electron-counts",
+                { user_id: created_by, electron_user_count: electronAdded },
+                { timeout: 5000 }
+              );
+              console.log("[ElectronSync] user count push response:", resp.data);
+            } catch (e) {
+              console.log("[ElectronSync] user count push FAILED:", e.message);
+            }
+          })();
+
           return res.status(200).json({
             success: true,
             message: "User added successfully",
@@ -167,6 +250,7 @@ const addUser = async (req, res) => {
           });
         });
       });
+      } // end proceedToAddUser
     });
   } catch (err) {
     return res.status(500).json({
@@ -408,7 +492,7 @@ const logoutUser = async (req, res) => {
 };
 
 const syncActivationData = async (req, res) => {
-  const { user, restaurant, subscription, plan } = req.body;
+  const { user, restaurant, subscription, plan, subUsers } = req.body;
 
   if (!user || !restaurant || !subscription || !plan) {
     return res.status(400).json({
@@ -419,6 +503,9 @@ const syncActivationData = async (req, res) => {
 
   db.serialize(() => {
     db.run("BEGIN TRANSACTION");
+
+    // Remove any existing user with same email to avoid stale password hash conflicts
+    db.run(`DELETE FROM user WHERE email = ?`, [user.email]);
 
     const userQuery = `
       INSERT OR REPLACE INTO user (
@@ -520,8 +607,9 @@ const syncActivationData = async (req, res) => {
         trial_date,
         package_status,
         created_by,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_at,
+        subscription_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.run(subscriptionQuery, [
@@ -536,6 +624,7 @@ const syncActivationData = async (req, res) => {
       subscription.package_status,
       subscription.created_by,
       subscription.created_at,
+      subscription.subscription_key || null,
     ]);
 
     const planQuery = `
@@ -578,11 +667,72 @@ const syncActivationData = async (req, res) => {
         });
       }
 
+      // Upsert sub-users so they can login to Electron without separate activation
+      if (Array.isArray(subUsers) && subUsers.length > 0) {
+        const subUserQuery = `
+          INSERT INTO user (
+            id, firstname, lastname, about, waiter_kitchenToken,
+            email, password, password_reset_token, image,
+            last_login, last_logout, ip_address, counter, status,
+            is_admin, subscription_id, created_by, super_admin
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(email) DO UPDATE SET
+            firstname=excluded.firstname,
+            lastname=excluded.lastname,
+            about=excluded.about,
+            password=excluded.password,
+            status=excluded.status,
+            is_admin=excluded.is_admin,
+            subscription_id=excluded.subscription_id,
+            created_by=excluded.created_by
+        `;
+        for (const su of subUsers) {
+          db.run(subUserQuery, [
+            su.id,
+            su.firstname,
+            su.lastname,
+            su.about || null,
+            su.waiter_kitchenToken || null,
+            su.email,
+            su.password,
+            su.password_reset_token || null,
+            su.image || null,
+            su.last_login || null,
+            su.last_logout || null,
+            su.ip_address || null,
+            su.counter || null,
+            su.status ?? 1,
+            su.is_admin ?? 0,
+            su.subscription_id || null,
+            su.created_by || null,
+            su.super_admin || null,
+          ], () => {});
+        }
+      }
+
       return res.status(200).json({
         success: true,
         message: "Activation data synced successfully",
       });
     });
+  });
+};
+
+const getSubscriptionKeyByEmail = (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false, message: "Email required" });
+
+  db.get("SELECT id FROM user WHERE email = ?", [email], (err, userRow) => {
+    if (err || !userRow) return res.json({ success: false, subscription_key: null });
+
+    db.get(
+      "SELECT subscription_key FROM superadmin_user_plans WHERE user_id = ? AND subscription_key IS NOT NULL ORDER BY user_plan_id DESC LIMIT 1",
+      [userRow.id],
+      (err2, planRow) => {
+        if (err2 || !planRow) return res.json({ success: false, subscription_key: null });
+        return res.json({ success: true, subscription_key: planRow.subscription_key });
+      }
+    );
   });
 };
 
@@ -712,15 +862,15 @@ const loginUser = async (req, res) => {
     }
 
     if (!user) {
-      return res.status(401).send({ message: "Invalid email" });
+      return res.status(401).send({ message: "Invalid email or password" });
     }
 
     const payload = { id: user.id, email: user.email };
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "60m" });
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
 
     const updateLoginSql = `
-      UPDATE user 
-      SET last_login = datetime('now'), authtoken = ? 
+      UPDATE user
+      SET last_login = datetime('now'), authtoken = ?
       WHERE id = ?
     `;
 
@@ -761,7 +911,7 @@ const loginUser = async (req, res) => {
             if (plan) {
               if (plan.package_status?.toLowerCase() !== "approved") {
                 subscriptionStatus = "not_approved";
-              } else if (new Date() > new Date(plan.end_date)) {
+              } else if (new Date() > new Date(plan.end_date + "T23:59:59")) {
                 subscriptionStatus = "expired";
               } else {
                 subscriptionStatus = "active";
@@ -832,7 +982,7 @@ const loginUser = async (req, res) => {
       if (plan) {
         if (plan.package_status?.toLowerCase() !== "approved") {
           subscriptionStatus = "not_approved";
-        } else if (new Date() > new Date(plan.end_date)) {
+        } else if (new Date() > new Date(plan.end_date + "T23:59:59")) {
           subscriptionStatus = "expired";
         } else {
           subscriptionStatus = "active";
@@ -848,7 +998,49 @@ const loginUser = async (req, res) => {
         }
 
         // ✅ Admin Login
+        console.log("[Login] is_admin:", user.is_admin, "| email:", user.email);
         if (user.is_admin == 1) {
+          console.log("[Login] Admin path — triggering live sync...");
+          // Fire-and-forget: sync live order/user counts from main server
+          (async () => {
+            try {
+              const activateRes = await axios.post(
+                "https://krayon.softwarestesting.co.in/api/activate-exe",
+                { email: user.email },
+                { timeout: 8000 }
+              );
+              console.log("[LiveSync] activate-exe response:", JSON.stringify(activateRes.data?.data, null, 2));
+              if (activateRes.data?.success) {
+                const { order_count = 0, user_count = 0 } = activateRes.data.data || {};
+                db.run(
+                  "UPDATE restaurant_settings SET live_order_count = ?, live_user_count = ? WHERE user_id = ?",
+                  [order_count, user_count, user.id],
+                  () => {
+                    db.get("SELECT COUNT(*) AS uc FROM user WHERE created_by = ?", [user.id], (_, uRow) => {
+                      db.get("SELECT COUNT(*) AS oc FROM customer_order WHERE created_by = ? AND order_status NOT IN (5,6)", [user.id], async (_, oRow) => {
+                        const localUsers = uRow?.uc ?? 0;
+                        const localOrders = oRow?.oc ?? 0;
+                        // synced_user_count = subUsers physically in local DB from last fallback login
+                        const syncedRow = await new Promise((r) =>
+                          db.get("SELECT synced_user_count FROM restaurant_settings WHERE user_id = ? ORDER BY synced_user_count DESC LIMIT 1", [user.id], (_, row) => r(row))
+                        );
+                        const syncedCount = syncedRow?.synced_user_count ?? 0;
+                        const electronUsers = Math.max(0, localUsers - syncedCount);
+                        const electronOrders = Math.max(0, localOrders - order_count);
+                        console.log("=== LOGIN COUNTS (after live sync) ===");
+                        console.log("User:", user.email, "| ID:", user.id);
+                        console.log("Main website   — users:", user_count, "| orders:", order_count);
+                        console.log("Electron added — users:", electronUsers, "| orders:", electronOrders);
+                        console.log("TOTAL COMBINED — users:", user_count + electronUsers, "| orders:", order_count + electronOrders);
+                        console.log("=======================================");
+                      });
+                    });
+                  }
+                );
+              }
+            } catch (e) { console.log("[LiveSync] Error:", e.message); }
+          })();
+
           return res.status(200).send({
             message: "Admin login successful",
             token,
@@ -1401,6 +1593,7 @@ module.exports = {
   getUserById,
   updateUser,
   syncActivationData,
+  getSubscriptionKeyByEmail,
   getStatesByCountry,
   getCitiesByState,
   loginUser,

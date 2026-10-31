@@ -1,0 +1,2 @@
+kitchen,floor,shipping type,add-ons,
+http://localhost:5173/#/commission-setting

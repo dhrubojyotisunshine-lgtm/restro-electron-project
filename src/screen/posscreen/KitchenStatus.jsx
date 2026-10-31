@@ -129,6 +129,8 @@ const KitchenStatus = () => {
     };
 
     fetchKitchenStatus();
+    const interval = setInterval(fetchKitchenStatus, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const formatTime = (time) => {

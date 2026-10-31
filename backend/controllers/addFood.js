@@ -1399,6 +1399,103 @@ const bulkUploadFood = (req, res) => {
   });
 };
 
+const importFoodItems = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    // Group rows by Product_Name
+    const groups = {};
+    for (const row of rows) {
+      const key = (row.Product_Name || "").trim();
+      if (!key) continue;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(row);
+    }
+
+    const groupKeys = Object.keys(groups);
+    let imported = 0, skipped = 0, index = 0;
+
+    function processNext() {
+      if (index >= groupKeys.length) return res.json({ success: true, imported, skipped });
+      const key = groupKeys[index++];
+      const groupRows = groups[key];
+      const firstRow = groupRows[0];
+
+      const productName = key;
+      const categoryName = (firstRow.Category_Name || "").trim();
+      const menuTypeName = (firstRow.Menu_Type || "").trim();
+      const description = (firstRow.Description || "").trim() || "";
+      const vat = parseFloat(firstRow.VAT) || 0;
+      const status = firstRow.Status !== undefined ? parseInt(firstRow.Status) : 1;
+
+      // Category, Menu_Type, and at least one Variant are required (matching add form)
+      const hasVariant = groupRows.some(r => (r.Variant_Name || "").trim());
+      if (!categoryName || !menuTypeName || !hasVariant) { skipped++; return processNext(); }
+
+      db.get("SELECT ProductsID FROM item_foods WHERE ProductName = ? AND UserIDInserted = ?", [productName, creator_id], (err, existing) => {
+        if (err || existing) { skipped++; return processNext(); }
+
+        db.get("SELECT CategoryID, kitchen_id FROM item_category WHERE Name = ? AND UserIDInserted = ?", [categoryName, creator_id], (err, category) => {
+          if (err || !category) { skipped++; return processNext(); }
+
+          const categoryId = category.CategoryID;
+          const kitchenId = category.kitchen_id || null;
+
+          db.get("SELECT menutypeid FROM tbl_menutype WHERE menutype = ? AND created_by = ?", [menuTypeName, creator_id], (err, mt) => {
+            if (err || !mt) { skipped++; return processNext(); }
+            const menuTypeId = mt.menutypeid;
+
+            db.run(
+              `INSERT INTO item_foods (CategoryID, UserIDInserted, kitchenid, ProductName, descrip, ProductImage,
+               bigthumb, medium_thumb, small_thumb, productvat, special, offerIsavailable,
+               offerstartdate, offerendate, is_customqty, ProductsIsActive, menutype)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [categoryId, creator_id, kitchenId, productName, description, "", "", "", "", vat, 0, 0, "", "", 0, status, menuTypeId],
+              function(err) {
+                if (err) { skipped++; return processNext(); }
+                const foodId = this.lastID;
+                const stmt = db.prepare("INSERT INTO variant (menuid, price, variantName) VALUES (?, ?, ?)");
+                groupRows.forEach(r => {
+                  const variantName = (r.Variant_Name || "").trim();
+                  const price = parseFloat(r.Price) || 0;
+                  if (variantName) stmt.run(foodId, price, variantName);
+                });
+                stmt.finalize(() => {
+                  imported++;
+                  processNext();
+                });
+              }
+            );
+          });
+        });
+      });
+    }
+
+    processNext();
+  }
+};
+
 module.exports = {
   createItemFood,
   getAllItemFoodDetails,
@@ -1406,4 +1503,5 @@ module.exports = {
   getItemFoodDetails,
   updateItemFood,
   bulkUploadFood,
+  importFoodItems,
 };

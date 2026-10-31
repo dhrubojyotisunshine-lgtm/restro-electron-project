@@ -3,6 +3,8 @@ const { print } = require("pdf-to-printer");
 const fs = require("fs");
 const path = require("path");
 const net = require("net");
+const axios = require("axios");
+const LIVE_API_URL = "https://krayon.softwarestesting.co.in/api";
 
 const resolveCreatorId = (userId) =>
   new Promise((resolve, reject) => {
@@ -123,7 +125,7 @@ async function printKOTForKitchen(kitchenId, orderId) {
   }
 }
 
-const orderPlace = (req, res) => {
+const orderPlace = async (req, res) => {
   const {
     customer_id,
     customer_type,
@@ -147,6 +149,54 @@ const orderPlace = (req, res) => {
   ) {
     console.log("❌ Validation failed");
     return res.status(400).json({ message: "Invalid request data" });
+  }
+
+  // Invoice limit check against active subscription plan (uses live count from last sync)
+  try {
+    const planOwnerId = await resolveCreatorId(created_by);
+    if (planOwnerId) {
+      const planRow = await new Promise((resolve) =>
+        db.get(
+          `SELECT sp.number_of_invoice FROM superadmin_user_plans sup
+           JOIN subscription_plans sp ON sup.plan_id = sp.plan_id
+           WHERE sup.user_id = ? AND sup.package_status = 'approved'
+           ORDER BY sup.user_plan_id DESC LIMIT 1`,
+          [planOwnerId],
+          (err, row) => resolve(err ? null : row)
+        )
+      );
+      const invoiceLimit = planRow?.number_of_invoice ?? null;
+      if (invoiceLimit !== null && invoiceLimit > 0) {
+        // Local Electron orders
+        const localRow = await new Promise((resolve) =>
+          db.get(
+            "SELECT COUNT(*) AS invoice_count FROM customer_order WHERE created_by = ? AND order_status NOT IN (5, 6)",
+            [planOwnerId],
+            (err, row) => resolve(err ? null : row)
+          )
+        );
+        const localCount = localRow?.invoice_count ?? 0;
+        // Main website orders synced at last login
+        const usageRow = await new Promise((resolve) =>
+          db.get(
+            "SELECT live_order_count FROM restaurant_settings WHERE user_id = ? ORDER BY live_order_count DESC LIMIT 1",
+            [planOwnerId],
+            (err, row) => resolve(err ? null : row)
+          )
+        );
+        const liveCount = usageRow?.live_order_count ?? 0;
+        const currentCount = localCount + liveCount;
+        console.log("[InvoiceLimit] local:", localCount, "| live:", liveCount, "| total:", currentCount, "| limit:", invoiceLimit);
+        if (currentCount >= invoiceLimit) {
+          return res.status(403).json({
+            success: false,
+            message: `Invoice limit reached (${currentCount}/${invoiceLimit}). Please upgrade your plan.`,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    // Allow order on plan-check error
   }
 
   db.get(
@@ -293,29 +343,46 @@ const orderPlace = (req, res) => {
                       0,
                     ]);
 
-                    let itemName = food.ProductName;
-                    if (detail.addons?.length) {
-                      const addons = detail.addons
-                        .map((a) => a.add_on_name)
-                        .join(", ");
-                      itemName += ` (Addons: ${addons})`;
-                    }
+                    const addKotItem = (variantName) => {
+                      let itemName = food.ProductName;
+                      if (variantName) {
+                        itemName += `\n  [${variantName}]`;
+                      }
+                      if (detail.addons?.length) {
+                        const addons = detail.addons
+                          .map((a) => a.add_on_name)
+                          .join(", ");
+                        itemName += `\n  +(${detail.addons.length}) ${addons}`;
+                      }
 
-                    if (!kotItems[kitchenId]) kotItems[kitchenId] = [];
-                    kotItems[kitchenId].push({
-                      name: itemName,
-                      qty: detail.quantity,
-                    });
-
-                    completed++;
-                    if (completed === order_details.length) {
-                      finalize().catch((err) => {
-                        console.error("❌ Finalize failed:", err.message);
-                        return res.status(500).json({
-                          success: false,
-                          message: err.message,
-                        });
+                      if (!kotItems[kitchenId]) kotItems[kitchenId] = [];
+                      kotItems[kitchenId].push({
+                        name: itemName,
+                        qty: detail.quantity,
                       });
+
+                      completed++;
+                      if (completed === order_details.length) {
+                        finalize().catch((err) => {
+                          console.error("❌ Finalize failed:", err.message);
+                          return res.status(500).json({
+                            success: false,
+                            message: err.message,
+                          });
+                        });
+                      }
+                    };
+
+                    if (detail.variantid) {
+                      db.get(
+                        "SELECT variantName FROM variant WHERE variantid = ?",
+                        [detail.variantid],
+                        (err2, variantRow) => {
+                          addKotItem(variantRow?.variantName || null);
+                        },
+                      );
+                    } else {
+                      addKotItem(null);
                     }
                   },
                 );
@@ -448,6 +515,37 @@ const orderPlace = (req, res) => {
                     await printKOTForKitchen(kitchenId, orderId);
                   }
                 }
+
+                // Fire-and-forget: push net electron-added order count to main website
+                (async () => {
+                  try {
+                    const adminId = await resolveCreatorId(created_by);
+                    if (!adminId) return;
+                    const usageRow = await new Promise((r) =>
+                      db.get(
+                        "SELECT live_order_count FROM restaurant_settings WHERE user_id = ? ORDER BY live_order_count DESC LIMIT 1",
+                        [adminId], (e, row) => r(row)
+                      )
+                    );
+                    const liveAtLogin = usageRow?.live_order_count ?? 0;
+                    const countRow = await new Promise((r) =>
+                      db.get(
+                        "SELECT COUNT(*) AS c FROM customer_order WHERE created_by = ? AND order_status NOT IN (5, 6)",
+                        [adminId], (e, row) => r(row)
+                      )
+                    );
+                    const localCount = countRow?.c ?? 0;
+                    const electronAdded = Math.max(0, localCount - liveAtLogin);
+                    console.log("[ElectronSync] orders — local:", localCount, "| liveAtLogin:", liveAtLogin, "| electronAdded:", electronAdded);
+                    const resp = await axios.post(`${LIVE_API_URL}/update-electron-counts`,
+                      { user_id: adminId, electron_order_count: electronAdded },
+                      { timeout: 5000 }
+                    );
+                    console.log("[ElectronSync] order push response:", resp.data);
+                  } catch (e) {
+                    console.log("[ElectronSync] order push FAILED:", e.message);
+                  }
+                })();
 
                 return res.json({
                   success: true,

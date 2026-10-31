@@ -192,8 +192,8 @@ const SetProductionUnit = () => {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
+        const errorJson = await response.json().catch(() => ({}));
+        throw new Error(errorJson.message || "Something went wrong.");
       }
 
       const data = await response.json();

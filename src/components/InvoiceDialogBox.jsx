@@ -23,7 +23,7 @@ const DialogBox = ({ isOpen, onClose, invoiceDatas}) => {
   useEffect(() => {
     fetchImageData();
   }, []);
-  const logoUrls = data?.map((val) => `${VITE_IMG_URL}${val.logo}`) || [];
+  const logoUrl = data?.logo ? `${VITE_IMG_URL}${data.logo}` : null;
 
 
 
@@ -41,10 +41,10 @@ const DialogBox = ({ isOpen, onClose, invoiceDatas}) => {
         <div className="border border-gray-300 rounded-md p-6">
           <div className="flex justify-between items-center mb-6">
             <div className="flex flex-col items-start gap-2">
-              <img src={logoUrls} alt="Logo" className="w-24 h-auto" />
+              <img src={logoUrl} alt="Logo" className="w-24 h-auto" />
               <div>
-                <h1 className="text-2xl font-bold text-gray-800">{data?.[0]?.restro_name}</h1>
-                <p className="text-sm text-gray-600">{data?.[0]?.address}</p>
+                <h1 className="text-2xl font-bold text-gray-800">{data?.restro_name}</h1>
+                <p className="text-sm text-gray-600">{data?.address}</p>
               </div>
             </div>
             <div className="text-right">

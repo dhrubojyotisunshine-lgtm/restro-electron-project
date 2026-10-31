@@ -96,7 +96,7 @@ const CompleteOrder = () => {
 
   // Set up react-to-print
   const handlePrint = useReactToPrint({
-    content: () => componentRef.current, // Ensure componentRef points to the correct content
+    contentRef: componentRef,
   });
 
   const showBillDetails = async (order_id) => {

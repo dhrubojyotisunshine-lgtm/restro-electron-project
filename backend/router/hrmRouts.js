@@ -67,4 +67,5 @@ router.get("/getdivisionbyid/:id", verifyToken, hrmcontroller.getALldivisionbyId
 router.post("/createdivision", verifyToken, hrmcontroller.createDivison);
 router.delete("/deletedivision/:id", verifyToken, hrmcontroller.deleteDivison);
 router.put("/updatedivision/:id", verifyToken, hrmcontroller.updateDivison);
+router.post("/employees/import", verifyToken, hrmcontroller.importEmployees);
 module.exports = router;

@@ -18,4 +18,5 @@ router.put('/ingredients/:id', ingredientsController.updateIngredient);
 // get ingredient list accourding t stock
 
 router.get('/ingredientsdetail',verifyToken, ingredientsController.getIngredientsDetails);
+router.post("/ingredients/import", verifyToken, ingredientsController.importIngredients);
 module.exports = router;

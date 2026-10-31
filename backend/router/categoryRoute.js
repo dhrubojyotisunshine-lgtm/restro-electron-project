@@ -34,5 +34,6 @@ router.put(
 router.get("/data/:id", verifyToken, dataController.getCategoryById);
 
 router.post("/bulkupload", auth, dataController.bulkUploadCategory);
+router.post("/categories/import", auth, dataController.importCategories);
 
 module.exports = router;

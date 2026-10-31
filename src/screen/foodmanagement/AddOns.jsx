@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useState, useRef } from "react";
 import Nav from "../../components/Nav";
 import Hamburger from "hamburger-react";
 import { IoMdNotifications, IoIosAddCircleOutline } from "react-icons/io";
@@ -88,6 +88,58 @@ const AddOns = () => {
     is_active: 1,
   };
   const token = localStorage.getItem("token");
+  const importInputRef = useRef(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const processImportFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    let rows = [];
+    try {
+      if (ext === "csv") {
+        const text = await file.text();
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        rows = result.data;
+      } else if (ext === "xlsx" || ext === "xls") {
+        const ExcelJS = (await import("exceljs")).default;
+        const workbook = new ExcelJS.Workbook();
+        const buffer = await file.arrayBuffer();
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0];
+        const headers = [];
+        worksheet.getRow(1).eachCell((cell) => headers.push(cell.value));
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return;
+          const obj = {};
+          row.eachCell((cell, colNumber) => { obj[headers[colNumber - 1]] = cell.value; });
+          rows.push(obj);
+        });
+      } else {
+        toast.error("Only CSV or XLSX files are supported.");
+        return;
+      }
+      if (rows.length === 0) { toast.error("No data found in file."); return; }
+      const res = await axios.post(`${API_BASE_URL}/addons/import`, { rows }, { headers: { Authorization: token } });
+      if (res.data.success) {
+        toast.success(`Imported: ${res.data.imported}, Skipped: ${res.data.skipped}`);
+        setShowImportModal(false);
+        getAddOnData();
+      } else {
+        toast.error(res.data.message || "Import failed.");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Import failed.");
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processImportFile(file);
+  };
+
 const { isFullScreen, toggleFullScreen } = useFullScreen();
   const [showModal, setShowModal] = useState(false);
   const [selectedCategoryID, setSelectedCategoryID] = useState(null);
@@ -503,10 +555,18 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
               </form>
             </div>
             <div className=" contant_div w-full  ml-4 pr-7 mt-4 ">
-              <div className="activtab flex justify-between">
+              <div className="activtab flex justify-between items-center">
                 <h1 className=" flex items-center justify-center gap-1 font-semibold">
                   Add On List
                 </h1>
+                <HasPermission module="Add Ons" action="create">
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="bg-[#1C1D3E] text-white text-sm px-3 py-1 rounded"
+                  >
+                    Import
+                  </button>
+                </HasPermission>
               </div>
               {/* Search Bar */}
               <div className=" mt-11  w-full">
@@ -808,6 +868,30 @@ const { isFullScreen, toggleFullScreen } = useFullScreen();
         onDelete={handleModalDelete}
         type={"Add-on"}
       />
+
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-[#1C1D3E]">Import Add Ons</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => importInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragging ? "border-[#4CBBA1] bg-green-50" : "border-gray-300 hover:border-[#4CBBA1]"}`}
+            >
+              <p className="text-gray-500 text-sm">Drag & drop a CSV or XLSX file here, or click to browse</p>
+              <input ref={importInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { if (e.target.files[0]) processImportFile(e.target.files[0]); }} />
+            </div>
+            <div className="mt-3 text-center">
+              <a href="/addon_import_sample.csv" download className="text-sm text-[#4CBBA1] underline">Download Sample CSV</a>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

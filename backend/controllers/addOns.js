@@ -391,6 +391,59 @@ const deleteAddOn = async (req, res) => {
   //   }
 };
 
+const importAddOns = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    let imported = 0, skipped = 0, index = 0;
+
+    function processNext() {
+      if (index >= rows.length) return res.json({ success: true, imported, skipped });
+      const row = rows[index++];
+      const add_on_name = (row.Add_On_Name || "").trim();
+      const price = row.Price;
+      const is_active = row.Status !== undefined ? parseInt(row.Status) : 1;
+
+      if (!add_on_name || !price) { skipped++; return processNext(); }
+
+      db.get("SELECT add_on_id FROM add_ons WHERE add_on_name = ? AND created_by = ?", [add_on_name, creator_id], (err, existing) => {
+        if (err || existing) { skipped++; return processNext(); }
+        db.run(
+          "INSERT INTO add_ons (add_on_name, price, is_active, created_by) VALUES (?, ?, ?, ?)",
+          [add_on_name, parseFloat(price), is_active, creator_id],
+          function(err) {
+            if (err) { skipped++; return processNext(); }
+            imported++;
+            processNext();
+          }
+        );
+      });
+    }
+    processNext();
+  }
+};
+
 module.exports = {
   deleteAddOn,
   updateAddOn,
@@ -399,4 +452,5 @@ module.exports = {
   createAddOnWithAssign,
   getAddOns,
   getAddOnsById,
+  importAddOns,
 };

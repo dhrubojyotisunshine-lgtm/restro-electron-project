@@ -176,11 +176,13 @@ const db = new sqlite3.Database(
     }
 
     // Always runs — even if initializeDatabase() failed above
+    mergeUsersFromBundled();
     seedMenuItems();
     migrateSubOrderSourceType();
     migrateCommissionSettings();
     migrateSubscriptionIndexes();
     migrateCommonSettingUserId();
+    migratePlanUsageCounts();
 
     if (process.send) {
       process.send("backend-ready");
@@ -224,6 +226,32 @@ function migrateSubscriptionIndexes() {
         else console.log("✅ superadmin_user_plans(user_plan_id) unique index ready");
       }
     );
+  });
+}
+
+// ---------------- MIGRATE plan_usage COUNTS INTO restaurant_settings ----------------
+function migratePlanUsageCounts() {
+  db.all("PRAGMA table_info(restaurant_settings)", (err, columns) => {
+    if (err) { console.error("⚠️ Could not read restaurant_settings schema:", err.message); return; }
+    const existing = new Set((columns || []).map((c) => c.name));
+    if (!existing.has("live_order_count")) {
+      db.run("ALTER TABLE restaurant_settings ADD COLUMN live_order_count INTEGER DEFAULT 0", (e) => {
+        if (e) console.error("⚠️ Could not add live_order_count:", e.message);
+        else console.log("✅ restaurant_settings.live_order_count added");
+      });
+    }
+    if (!existing.has("live_user_count")) {
+      db.run("ALTER TABLE restaurant_settings ADD COLUMN live_user_count INTEGER DEFAULT 0", (e) => {
+        if (e) console.error("⚠️ Could not add live_user_count:", e.message);
+        else console.log("✅ restaurant_settings.live_user_count added");
+      });
+    }
+    if (!existing.has("synced_user_count")) {
+      db.run("ALTER TABLE restaurant_settings ADD COLUMN synced_user_count INTEGER DEFAULT 0", (e) => {
+        if (e) console.error("⚠️ Could not add synced_user_count:", e.message);
+        else console.log("✅ restaurant_settings.synced_user_count added");
+      });
+    }
   });
 }
 
@@ -287,6 +315,43 @@ function migrateSubOrderSourceType() {
         else console.log("✅ sub_order.source_type column added");
       });
     }
+  });
+}
+
+// ---------------- MERGE USERS FROM BUNDLED DB ----------------
+// On every startup, INSERT OR IGNORE users from the bundled database.sqlite
+// into the AppData DB — so new users added to the installer are available
+// on existing installs without wiping their data.
+function mergeUsersFromBundled() {
+  const bundledDbPath = process.env.BUNDLED_DB_PATH;
+  const currentDbPath = process.env.DB_PATH;
+
+  if (!bundledDbPath || !fs.existsSync(bundledDbPath)) return;
+  if (bundledDbPath === currentDbPath) return; // same file, skip
+
+  const bundled = new (require("sqlite3").verbose().Database)(bundledDbPath, require("sqlite3").OPEN_READONLY);
+  bundled.all("SELECT * FROM user", [], (err, users) => {
+    if (err || !users || !users.length) { bundled.close(); return; }
+
+    const stmt = db.prepare(
+      `INSERT OR IGNORE INTO user
+       (id, firstname, lastname, about, waiter_kitchenToken, email, password, password_reset_token, image, last_login, last_logout, ip_address, counter, status, is_admin, authtoken, subscription_id, created_by, super_admin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+
+    let inserted = 0;
+    users.forEach(u => {
+      stmt.run(
+        [u.id, u.firstname, u.lastname, u.about, u.waiter_kitchenToken, u.email, u.password, u.password_reset_token, u.image, u.last_login, u.last_logout, u.ip_address, u.counter, u.status, u.is_admin, u.authtoken, u.subscription_id, u.created_by, u.super_admin],
+        function() { if (this.changes > 0) inserted++; }
+      );
+    });
+
+    stmt.finalize(() => {
+      if (inserted > 0) console.log(`✅ Merged ${inserted} new user(s) from bundled DB`);
+      else console.log("✅ User merge: no new users to add");
+      bundled.close();
+    });
   });
 }
 

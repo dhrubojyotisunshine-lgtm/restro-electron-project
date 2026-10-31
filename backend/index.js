@@ -49,14 +49,15 @@ const app = express();
 // Middleware
 app.use(cors());
 
-setInterval(() => {
-  syncAddons();
-  syncProduction();
-  syncPurchaseItems();
-  syncCategories();
-  syncFloors();
-  syncTables();
-}, 30000);
+// Live sync disabled — app runs fully local
+// setInterval(() => {
+//   syncAddons();
+//   syncProduction();
+//   syncPurchaseItems();
+//   syncCategories();
+//   syncFloors();
+//   syncTables();
+// }, 30000);
 
 app.use(express.json()); // Middleware to parse JSON bodies
 app.use(express.static("asset/category")); // Serve static files from the 'asset' directory
@@ -114,10 +115,20 @@ app.get("/", (req, res) => {
 // Start the server
 const PORT = process.env.PORT || 5001;
 
-app.listen(PORT, "0.0.0.0", () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server is listening on port ${PORT}...`);
 
   if (process.send) {
     process.send("backend-ready");
   }
+});
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use. Exiting.`);
+  } else {
+    console.error("Server error:", err.message);
+  }
+  if (process.send) process.send("backend-error");
+  process.exit(1);
 });

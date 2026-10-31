@@ -723,6 +723,70 @@ const getIngredientsDetails = (req, res) => {
 //   }
 // };
 
+const importIngredients = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    db.all("SELECT id, uom_name, uom_short_code FROM unit_of_measurement", [], (err, units) => {
+      if (err) return res.status(500).json({ success: false, message: err.message });
+
+      let imported = 0, skipped = 0, index = 0;
+
+      function processNext() {
+        if (index >= rows.length) return res.json({ success: true, imported, skipped });
+        const row = rows[index++];
+        const ingredient_name = (row.Ingredient_Name || "").trim();
+        const unit_name = (row.Unit_Name || "").trim();
+        const min_stock = row.Min_Stock || 0;
+        const status = row.Status !== undefined ? parseInt(row.Status) : 1;
+
+        if (!ingredient_name || !unit_name) { skipped++; return processNext(); }
+
+        const unit = units.find(u =>
+          u.uom_short_code.toLowerCase() === unit_name.toLowerCase() ||
+          u.uom_name.toLowerCase() === unit_name.toLowerCase()
+        );
+        if (!unit) { skipped++; return processNext(); }
+
+        db.get("SELECT id FROM ingredients WHERE ingredient_name = ? AND created_by = ?", [ingredient_name, creator_id], (err, existing) => {
+          if (err || existing) { skipped++; return processNext(); }
+          db.run(
+            "INSERT INTO ingredients (ingredient_name, uom_id, min_stock, status, is_active, created_by) VALUES (?, ?, ?, ?, 1, ?)",
+            [ingredient_name, unit.id, parseFloat(min_stock), status, creator_id],
+            function(err) {
+              if (err) { skipped++; return processNext(); }
+              imported++;
+              processNext();
+            }
+          );
+        });
+      }
+      processNext();
+    });
+  }
+};
+
 module.exports = {
   createIngredient,
   getAllIngredients,
@@ -730,4 +794,5 @@ module.exports = {
   getIngredientById,
   updateIngredient,
   getIngredientsDetails,
+  importIngredients,
 };

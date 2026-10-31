@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useContext } from "react";
+import defaultLogo from "../assets/images/Group 206124.png";
 import { NavLink, useLocation } from "react-router-dom";
 import { VscArrowLeft } from "react-icons/vsc";
 import { IoHome, IoSettingsOutline, IoSettings } from "react-icons/io5";
@@ -55,6 +56,7 @@ const Nav = () => {
     );
   };
   const toggleSubmenu = (index) => {
+    if (!open) setOpen(true);
     setOpenSubmenuIndex(openSubmenuIndex === index ? null : index);
   };
   const Menus = [
@@ -319,9 +321,9 @@ const Nav = () => {
 
   return (
     <div
-      className={`bg-[#1C1D3E] text-zinc-100  min-h-screen p-5 pt-8 ${
-        open ? "w-auto" : "w-20"
-      } relative duration-500`}
+      className={`bg-[#1C1D3E] text-zinc-100 h-screen overflow-y-auto p-5 pt-8 ${
+        open ? "w-64" : "w-20"
+      } relative duration-500 sticky top-0`}
     >
       <VscArrowLeft
         className={`bg-black  text-3xl rounded-full absolute -right-3 top-9 border border-black cursor-pointer ${
@@ -332,11 +334,11 @@ const Nav = () => {
       <div className="flex items-center gap-3 mt-5 py-3">
         {/* <SiFoodpanda
           className="text-4xl float-left block cursor-pointer mr-2"
-         
+
         /> */}
         <span onClick={() => setOpen(!open)}>
           <img
-            src={logoUrls}
+            src={logoUrls || defaultLogo}
             alt="Logo"
             className="float-start cursor-pointer mr-2"
             width={70}
@@ -347,7 +349,7 @@ const Nav = () => {
             !open && "hidden"
           }`}
         >
-          {data?.restro_name}
+          {data?.restro_name || "Restro POS"}
         </h1>
       </div>
       <div>

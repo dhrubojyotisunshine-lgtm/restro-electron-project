@@ -285,9 +285,9 @@ const token = localStorage.getItem("token");
     axios.get(`${API_BASE_URL}/leaveapply/${id}`).then((response) => {
       const data = response.data.data[0];
       setFormData2({
-        emp_his_id: data.employee_id || "", // Ensure it matches select value for employee
-        leave_type_id: data.leave_type_id || "", // Ensure it matches select value for leave type
-        approved_by: data.approved_by || "", // Ensure it matches select value for approved by
+        emp_his_id: String(data.employee_id || ""),
+        leave_type_id: String(data.leave_type_id || ""),
+        approved_by: String(data.approved_by || ""),
         apply_strt_date: data.apply_strt_date || "",
         apply_end_date: data.apply_end_date || "",
         apply_day: data.apply_day || "",
@@ -681,7 +681,7 @@ const token = localStorage.getItem("token");
                                     <button
                                       className="bg-[#1C1D3E] p-1 rounded-sm text-white hover:scale-105"
                                       onClick={() =>
-                                        handleEditClick(row.leave_appl_id)
+                                        handleEditClick(row.leave_apply_id)
                                       }
                                     >
                                       <FaRegEdit />
@@ -916,7 +916,7 @@ const token = localStorage.getItem("token");
          <div className="w-full max-w-md px-4"> {/* Set a smaller max width for the modal */}
            <div className="py-6 bg-white rounded-lg shadow-md border border-gray-300">
              <div className="flex py-4 px-4 justify-between items-center border-b border-gray-300">
-               <h2 className="text-xl font-semibold">Edit Leave Type</h2>
+               <h2 className="text-xl font-semibold">Edit Leave Application</h2>
                <button
                  onClick={() => setIsModalOpen2(false)}
                  className="text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded-sm transition duration-200"

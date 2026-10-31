@@ -13,5 +13,6 @@ router.post("/addons", verifyToken, addOnController.createAddOn);
 router.post("/createAddOnWithAssign", addOnController.createAddOnWithAssign);
 router.put("/addons/:add_on_Id", addOnController.updateAddOn);
 router.delete("/addons/:id", addOnController.deleteAddOn);
+router.post("/addons/import", verifyToken, addOnController.importAddOns);
 
 module.exports = router;

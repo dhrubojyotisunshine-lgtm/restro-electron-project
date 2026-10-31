@@ -664,6 +664,68 @@ const bulkUploadCategory = (req, res) => {
   });
 };
 
+const importCategories = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get("SELECT * FROM superadmin_user_plans WHERE user_id = ?", [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    const { v4: uuidv4 } = require("uuid");
+    let imported = 0, skipped = 0, index = 0;
+    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+    function processNext() {
+      if (index >= rows.length) return res.json({ success: true, imported, skipped });
+      const row = rows[index++];
+      const name = (row.Category_Name || "").trim();
+      const kitchenName = (row.Kitchen_Name || "").trim();
+      const status = row.Status !== undefined ? parseInt(row.Status) : 1;
+
+      if (!name || !kitchenName) { skipped++; return processNext(); }
+
+      db.get("SELECT CategoryID FROM item_category WHERE Name = ? AND UserIDInserted = ?", [name, creator_id], (err, existing) => {
+        if (err || existing) { skipped++; return processNext(); }
+
+        db.get("SELECT id FROM kitchens WHERE kitchen_name = ? AND created_by = ?", [kitchenName, creator_id], (err, kitchen) => {
+          if (err || !kitchen) { skipped++; return processNext(); }
+
+          const uuid = uuidv4();
+          db.run(
+            `INSERT INTO item_category (uuid, Name, parentid, offerstartdate, offerendate, CategoryIsActive, CategoryImage, isoffer, UserIDInserted, kitchen_id, DateInserted, DateUpdated, is_synced)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+            [uuid, name, 0, null, null, status, null, 0, creator_id, kitchen.id, now, now],
+            function(err) {
+              if (err) { skipped++; return processNext(); }
+              imported++;
+              processNext();
+            }
+          );
+        });
+      });
+    }
+    processNext();
+  }
+};
+
 module.exports = {
   getCategory,
   addCategory,
@@ -671,4 +733,5 @@ module.exports = {
   updateCategory,
   getCategoryById,
   bulkUploadCategory,
+  importCategories,
 };

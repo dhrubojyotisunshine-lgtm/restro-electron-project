@@ -41,6 +41,7 @@ router.put(
 );
 
 router.post("/sync-activation-data", userControllers.syncActivationData);
+router.post("/get-subscription-key", userControllers.getSubscriptionKeyByEmail);
 
 // log in api routs
 router.post("/login", userControllers.loginUser);

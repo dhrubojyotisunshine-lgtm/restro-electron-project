@@ -663,10 +663,7 @@
 
 const db = require("../utils/db");
 const { log } = require("../utils/logger");
-
-const { print } = require("pdf-to-printer");
-const html_to_pdf = require("html-pdf-node");
-
+const { exec } = require("child_process");
 const net = require("net");
 const fs = require("fs");
 const path = require("path");
@@ -674,9 +671,9 @@ const path = require("path");
 async function printToPrinter(printer, html, rawText) {
   log("🖨 Printing to:", printer);
 
-  // WINDOWS / USB / SHARED
+  // WINDOWS / USB / SHARED — use raw text, no Chrome needed
   if (printer.printer_type === "windows" || printer.printer_type === "usb") {
-    return printWindows(printer.printer_name.trim(), html);
+    return printWindows(printer.printer_name.trim(), rawText);
   }
 
   // NETWORK / LAN
@@ -684,7 +681,6 @@ async function printToPrinter(printer, html, rawText) {
     if (!printer.printer_path) {
       throw new Error("Printer IP address missing");
     }
-
     return printNetwork(printer.printer_path, printer.port || 9100, rawText);
   }
 
@@ -692,120 +688,136 @@ async function printToPrinter(printer, html, rawText) {
 }
 
 /* =========================================================
-   WINDOWS PDF PRINT
+   WINDOWS RAW PRINT — bypasses page model using Win32 API
+   Sends bytes directly to printer spooler as RAW datatype
+   so Generic/Text Only driver does NOT pad to page size.
 ========================================================= */
+function printWindows(printerName, text) {
+  return new Promise((resolve, reject) => {
+    try {
+      log("====================================");
+      log("🖨 WINDOWS RAW PRINT STARTED");
+      log(`🖨 Printer Name: ${printerName}`);
 
-async function printWindows(printerName, html) {
-  try {
-    log("====================================");
+      const tempDir = path.join(process.cwd(), "temp");
+      if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-    log("🖨 WINDOWS PDF PRINT STARTED");
+      const ts = Date.now();
+      const filePath = path.join(tempDir, `kot_${ts}.txt`);
+      const psPath  = path.join(tempDir, `print_${ts}.ps1`);
 
-    log(`🖨 Printer Name: ${printerName}`);
+      // Use \r\n line endings for thermal printer compatibility
+      const content = text.replace(/\r?\n/g, "\r\n");
+      fs.writeFileSync(filePath, content, "binary");
 
-    const tempDir = path.join(process.cwd(), "temp");
+      // PowerShell script that sends raw bytes via winspool.drv
+      // This avoids the Letter-page model that Out-Printer triggers
+      const escapedFile    = filePath.replace(/\\/g, "\\\\");
+      const escapedPrinter = printerName.replace(/'/g, "''");
 
-    // CREATE TEMP FOLDER
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir);
+      const psScript = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class RawPrinter {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public class DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
     }
+    [DllImport("winspool.drv", EntryPoint="OpenPrinterA")]
+    public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+    [DllImport("winspool.drv", EntryPoint="ClosePrinter")]
+    public static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="StartDocPrinterA")]
+    public static extern bool StartDocPrinter(IntPtr h, int l, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA d);
+    [DllImport("winspool.drv", EntryPoint="EndDocPrinter")]
+    public static extern bool EndDocPrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="StartPagePrinter")]
+    public static extern bool StartPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="EndPagePrinter")]
+    public static extern bool EndPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="WritePrinter")]
+    public static extern bool WritePrinter(IntPtr h, IntPtr p, int c, out int w);
+    public static void Send(string name, byte[] bytes) {
+        IntPtr hPrinter;
+        var di = new DOCINFOA { pDocName = "KOT", pDataType = "RAW" };
+        OpenPrinter(name, out hPrinter, IntPtr.Zero);
+        StartDocPrinter(hPrinter, 1, di);
+        StartPagePrinter(hPrinter);
+        var pBytes = Marshal.AllocCoTaskMem(bytes.Length);
+        Marshal.Copy(bytes, 0, pBytes, bytes.Length);
+        int w;
+        WritePrinter(hPrinter, pBytes, bytes.Length, out w);
+        Marshal.FreeCoTaskMem(pBytes);
+        EndPagePrinter(hPrinter);
+        EndDocPrinter(hPrinter);
+        ClosePrinter(hPrinter);
+    }
+}
+'@
+$bytes = [System.IO.File]::ReadAllBytes('${escapedFile}')
+[RawPrinter]::Send('${escapedPrinter}', $bytes)
+`;
 
-    const pdfPath = path.join(tempDir, `kot_${Date.now()}.pdf`);
+      fs.writeFileSync(psPath, psScript, "utf8");
+      log(`📄 PS1 script: ${psPath}`);
 
-    log(`📄 PDF Path: ${pdfPath}`);
+      const command = `powershell -ExecutionPolicy Bypass -File "${psPath}"`;
+      log(`🖨 Command: ${command}`);
 
-    /* =========================================
-       GENERATE PDF
-    ========================================= */
-
-    const options = {
-      width: "50mm",
-
-      margin: {
-        top: "0mm",
-        bottom: "0mm",
-        left: "0mm",
-        right: "0mm",
-      },
-
-      printBackground: true,
-    };
-
-    const file = {
-      content: html,
-    };
-
-    const pdfBuffer = await html_to_pdf.generatePdf(file, options);
-
-    fs.writeFileSync(pdfPath, pdfBuffer);
-
-    log("✅ PDF file created");
-
-    /* =========================================
-       CHECK FILE EXISTS
-    ========================================= */
-
-    const fileExists = fs.existsSync(pdfPath);
-
-    log(`📄 PDF Exists: ${fileExists}`);
-
-    /* =========================================
-       PRINT PDF
-    ========================================= */
-
-    await print(pdfPath, {
-      printer: printerName,
-    });
-
-    log("✅ WINDOWS PDF PRINT COMPLETED");
-
-    log("====================================");
-
-    return true;
-  } catch (err) {
-    log(`❌ WINDOWS PDF PRINT FAILED: ${err.message}`);
-
-    throw err;
-  }
+      exec(command, (error, stdout, stderr) => {
+        if (error) {
+          log(`❌ RAW PRINT ERROR: ${error.message}`);
+          return reject(error);
+        }
+        log(`✅ WINDOWS RAW PRINT COMPLETED`);
+        log("====================================");
+        resolve(true);
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 
 function buildRawText(orders) {
+  const SEP = "--------------------------------\n";
   let text = "";
 
   for (const orderId in orders) {
     const order = orders[orderId];
 
-    text += "--------------------------------\n";
+    text += SEP;
+    text += "         FOOD ZONE\n";
+    text += SEP;
 
-    text += "           FOOD ZONE\n";
+    const tbl = String(order.table_name || "-").substring(0, 10);
+    text += `TABLE : ${tbl.padEnd(10, " ")} TKN: ${order.tokenno}\n`;
 
-    text += "--------------------------------\n";
-
-    text += `ROOM     : ${order.table}\n`;
-
-    text += `ORDER #  : ${orderId}\n`;
-
-    text += `TIME     : ${order.time}\n`;
-
-    text += "--------------------------------\n";
-
+    const otype = String(order.customer_type || "Dine-in").substring(0, 12);
+    text += `ORDER# : ${orderId}    ${otype}\n`;
+    text += `TIME   : ${order.time}\n`;
+    text += `WAITER : ${order.waiter_name}\n`;
+    text += SEP;
     text += "ITEM                     QTY\n";
-
-    text += "--------------------------------\n";
+    text += SEP;
 
     order.items.forEach((i) => {
-      const name = String(i.item_name || "").substring(0, 22);
-
+      const lines = String(i.item_name || "").split("\n");
+      const base = lines[0].substring(0, 24);
       const qty = String(i.qty || "");
+      text += base.padEnd(25, " ") + qty + "\n";
 
-      text += name.padEnd(24, " ") + qty.padStart(3, " ") + "\n";
+      for (let j = 1; j < lines.length; j++) {
+        text += lines[j] + "\n";
+      }
     });
 
-    text += "--------------------------------\n";
-
-    text += "          THANK YOU!\n";
-
-    text += "\n\n\n";
+    text += SEP;
+    text += "         THANK YOU!\n";
+    text += "\n\n";
   }
 
   return text;
@@ -1001,7 +1013,7 @@ function printNetwork(ip, port, text) {
     client.connect(port, ip, () => {
       console.log(`🖨 Connected to printer ${ip}:${port}`);
 
-      client.write(Buffer.from(text + "\n\n\n", "ascii"));
+      client.write(Buffer.from(text, "ascii"));
 
       client.end();
 
@@ -1023,8 +1035,9 @@ function printNetwork(ip, port, text) {
 const printOrderToKitchens = async (req, res) => {
   try {
     const { kitchenId } = req.params;
+    const orderId = req.body?.order_id || null;
 
-    log("📥 Print API called", { kitchenId });
+    log("📥 Print API called", { kitchenId, orderId });
 
     if (!kitchenId) {
       return res.status(400).json({
@@ -1036,7 +1049,7 @@ const printOrderToKitchens = async (req, res) => {
     const kotItems = await new Promise((resolve, reject) => {
       db.all(
         `
-        SELECT 
+        SELECT
           k.kot_id,
           k.order_id,
           k.item_name,
@@ -1046,7 +1059,9 @@ const printOrderToKitchens = async (req, res) => {
           co.order_time,
           co.waiter_id,
           co.cutomertype,
+          co.tokenno,
 
+          rt.tablename,
           TRIM(u.firstname || ' ' || IFNULL(u.lastname, '')) AS waiter_name,
           ct.customer_type AS customer_type_name
 
@@ -1055,6 +1070,9 @@ const printOrderToKitchens = async (req, res) => {
         JOIN customer_order co
         ON k.order_id = co.order_id
 
+        LEFT JOIN rest_table rt
+        ON co.table_no = rt.tableid
+
         LEFT JOIN user u
         ON co.waiter_id = u.id
 
@@ -1062,11 +1080,11 @@ const printOrderToKitchens = async (req, res) => {
         ON co.cutomertype = ct.customer_type_id
 
         WHERE k.kitchen_id = ?
-        AND k.printed = 0
+        ${orderId ? "AND k.order_id = ?" : "AND k.printed = 0"}
 
         ORDER BY k.order_id ASC
         `,
-        [kitchenId],
+        orderId ? [kitchenId, orderId] : [kitchenId],
         (err, rows) => {
           if (err) return reject(err);
           resolve(rows || []);
@@ -1116,6 +1134,8 @@ const printOrderToKitchens = async (req, res) => {
       if (!orders[item.order_id]) {
         orders[item.order_id] = {
           table: item.table_no || "-",
+          table_name: item.tablename || "-",
+          tokenno: item.tokenno || "-",
           time: item.order_time || "-",
           waiter_name: item.waiter_name || "-",
           customer_type: item.customer_type_name || "-",
@@ -1221,11 +1241,18 @@ const testUsbPrint = async (req, res) => {
 
 const getKitchenKotList = async (req, res) => {
   try {
+    const userId = req.id;
+    const adminId = await new Promise((resolve) =>
+      db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (_, row) => {
+        resolve(row?.is_admin === 1 ? userId : (row?.created_by ?? userId));
+      })
+    );
+
     const query = `
-      SELECT 
-        k.kot_id, 
+      SELECT
+        k.kot_id,
         k.order_id,
-        k.kitchen_id, 
+        k.kitchen_id,
         k.item_name,
         k.qty,
         k.status AS kitchen_status,
@@ -1239,12 +1266,12 @@ const getKitchenKotList = async (req, res) => {
       JOIN customer_order co ON k.order_id = co.order_id
       LEFT JOIN rest_table rt ON co.table_no = rt.tableid
       WHERE
-        k.printed = 1
-        AND COALESCE(k.status, '') NOT IN ('completed','rejected')
+        COALESCE(k.status, '') NOT IN ('completed','rejected')
+        AND co.created_by = ?
       ORDER BY k.order_id DESC
     `;
 
-    db.all(query, [], (err, result) => {
+    db.all(query, [adminId], (err, result) => {
       if (err) {
         console.error("SQLite error:", err);
         return res.status(500).json({ success: false });
@@ -1293,8 +1320,15 @@ const getKitchenKotList = async (req, res) => {
 
 const getKitchenKotHistory = async (req, res) => {
   try {
+    const userId = req.id;
+    const adminId = await new Promise((resolve) =>
+      db.get("SELECT is_admin, created_by FROM user WHERE id = ?", [userId], (_, row) => {
+        resolve(row?.is_admin === 1 ? userId : (row?.created_by ?? userId));
+      })
+    );
+
     const query = `
-      SELECT 
+      SELECT
         k.kot_id,
         k.order_id,
         k.kitchen_id,
@@ -1311,11 +1345,11 @@ const getKitchenKotHistory = async (req, res) => {
       FROM kot_items k
       JOIN customer_order co ON k.order_id = co.order_id
       LEFT JOIN rest_table rt ON co.table_no = rt.tableid
-      WHERE CAST(k.printed AS INTEGER) = 1
+      WHERE co.created_by = ?
       ORDER BY k.order_id DESC
     `;
 
-    db.all(query, [], (err, result) => {
+    db.all(query, [adminId], (err, result) => {
       if (err) {
         console.error("SQLite error:", err);
         return res.status(500).json({ success: false });

@@ -6,7 +6,7 @@ export const ComponentToPrintInvoice = React.forwardRef((props, ref) => {
   const { invoiceData } = props;
    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
     const VITE_IMG_URL=import.meta.env.VITE_IMG_URL
-    const [data, setData] = useState([]);
+    const [data, setData] = useState(null);
     const { userId, username } = useContext(AuthContext);
     const token = localStorage.getItem("token");
     const fetchImageData = () => {
@@ -27,25 +27,17 @@ export const ComponentToPrintInvoice = React.forwardRef((props, ref) => {
   if (!invoiceData || !invoiceData.length) {
     return <div>No data available</div>;
   }
-  const logoUrls = data.map((val) => {
-   
-    return `${VITE_IMG_URL}${val.logo}`; // Correctly concatenate APP_URL with val.logo
-
-});
-const logoUrls2 = data.map((val) => {
- 
-  return `${VITE_IMG_URL}${val.logo_footer}`; // Correctly concatenate APP_URL with val.logo
-
-});
+  const logoUrl = data?.logo ? `${VITE_IMG_URL}${data.logo}` : null;
+  const logoUrl2 = data?.logo_footer ? `${VITE_IMG_URL}${data.logo_footer}` : null;
   return (
     <div ref={ref}>
       <div className="max-w-lg mx-auto p-4 bg-white border rounded-lg shadow-md">
       <header className="text-center">
-        {data.length > 0 && (
+        {data && (
           <>
-            <img src={logoUrls[0]} alt="Logo" className="mx-auto block" width={200} />
-            <h1 className="text-xl font-bold">{data[0].restro_name}</h1>
-            <p>{data[0].address}</p>
+            <img src={logoUrl} alt="Logo" className="mx-auto block" width={200} />
+            <h1 className="text-xl font-bold">{data.restro_name}</h1>
+            <p>{data.address}</p>
           </>
         )}
       </header>
@@ -137,12 +129,12 @@ const logoUrls2 = data.map((val) => {
           <p className="mt-4 font-bold">Thank you very much</p>
         </footer>
 
-        <div className="text-center mt-4">
-          <p className="text-sm">
-            Powered By:{data[0].powerbytxt}
-          </p>
-          <img src={logoUrls2} alt="Logo" className="mx-auto block" width={200} />
-        </div>
+        {data && (
+          <div className="text-center mt-4">
+            <p className="text-sm">Powered By: {data.powerbytxt}</p>
+            <img src={logoUrl2} alt="Logo" className="mx-auto block" width={200} />
+          </div>
+        )}
 
 
        

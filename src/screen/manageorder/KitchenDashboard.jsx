@@ -40,21 +40,23 @@ const KitchenDashboard = () => {
   };
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadData = async (isFirstLoad = false) => {
       const [kitchens, orders] = await Promise.all([getkitchenData(), getKitchenOrders()]);
       setKitchenData(kitchens);
       setKotOrders(orders);
-      // Auto-select the first kitchen that has pending orders, fallback to first kitchen
-      if (kitchens.length > 0) {
+      // Auto-select only on first load so user's manual tab selection isn't overridden
+      if (isFirstLoad && kitchens.length > 0) {
         const kitchenWithOrders = kitchens.find((k) =>
-          orders.some((o) => Number(o.kitchen_id) === Number(k.kitchenid))
+          orders.some((o) => Number(o.kitchen_id) === Number(k.id))
         );
         setActiveKitchen(
-          kitchenWithOrders ? kitchenWithOrders.kitchenid : kitchens[0].kitchenid
+          kitchenWithOrders ? kitchenWithOrders.id : kitchens[0].id
         );
       }
     };
-    loadData();
+    loadData(true);
+    const interval = setInterval(() => loadData(false), 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const filteredOrders = kotOrders.filter(
@@ -199,6 +201,67 @@ const KitchenDashboard = () => {
 
     setRejectModal(null);
     setReason("");
+  };
+
+  const handlePrintKOT = async (order) => {
+    // Try configured kitchen printer first
+    try {
+      await axios.post(
+        `${API_BASE_URL}/printkitchenkot/${order.kitchen_id}`,
+        { order_id: order.order_id },
+        { headers: { Authorization: token } },
+      );
+      return; // Sent to configured printer — done
+    } catch {
+      // No printer configured — fall back to browser print dialog
+    }
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString();
+    const timeStr = now.toLocaleTimeString();
+
+    const itemRows = order.items
+      .map(
+        (item) => `
+        <tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${item.name}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${item.qty}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const html = `
+      <html><head><title>KOT</title>
+      <style>
+        body { font-family: monospace; width: 280px; margin: 0 auto; font-size: 13px; }
+        h2 { text-align: center; margin: 4px 0; }
+        p { margin: 2px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th { background: #222; color: #fff; padding: 6px 8px; text-align: left; }
+        th:last-child { text-align: center; }
+        hr { border: 1px dashed #000; }
+      </style></head>
+      <body>
+        <h2>Kitchen Order Ticket</h2>
+        <hr/>
+        <p><b>Table:</b> ${order.table_name || "--"}</p>
+        <p><b>Order #:</b> ${order.saleinvoice || order.order_id}</p>
+        <p><b>Token:</b> ${order.tokenno || "--"}</p>
+        <p><b>Date:</b> ${dateStr} ${timeStr}</p>
+        <hr/>
+        <table>
+          <thead><tr><th>Item</th><th>Qty</th></tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+        <hr/>
+      </body></html>`;
+
+    const win = window.open("", "_blank", "width=320,height=500");
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
   };
 
   return (
@@ -350,7 +413,10 @@ const KitchenDashboard = () => {
                                 Prepared
                               </button>
 
-                              <button className="bg-sky-400 px-4 py-2 rounded text-white text-xl hover:bg-sky-500">
+                              <button
+                                onClick={() => handlePrintKOT(order)}
+                                className="bg-sky-400 px-4 py-2 rounded text-white text-xl hover:bg-sky-500"
+                              >
                                 🖨
                               </button>
                             </div>

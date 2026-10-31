@@ -372,7 +372,7 @@ const MySubscription = () => {
       const res = await axios.post(`${API_BASE_URL}/createsubscription`, {
         user_id: userId,
         plan_id: planId,
-      });
+      }, { headers: { Authorization: localStorage.getItem("token") } });
 
       if (res.data.success) {
         toast.success("Subscription requested successfully! (Pending)");
@@ -460,15 +460,33 @@ const MySubscription = () => {
                 <div className="font-semibold text-2xl mb-2">
                   Subscription Plan Details
                 </div>
-                {subscription.some(s => s.end_date && new Date(s.end_date) < new Date()) ? (
-                  <div className="bg-red-100 text-red-800 p-4 rounded mb-4 font-semibold">
-                    ⚠️ Some of your subscriptions have expired!
-                  </div>
-                ) : subscription.some(s => s.end_date && new Date(s.end_date) <= new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)) ? (
-                  <div className="bg-red-100 text-red-800 p-4 rounded mb-4 font-semibold">
-                    ⚠️ Some of your subscriptions are about to expire soon!
-                  </div>
-                ) : null}
+                {(() => {
+                  const now = new Date();
+                  const activePlan = subscription.find(
+                    s => s.package_status === 'approved' && s.end_date && new Date(s.end_date + "T23:59:59") >= now
+                  );
+                  const expiringSoon = activePlan && new Date(activePlan.end_date + "T23:59:59") <= new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+
+                  if (activePlan && !expiringSoon) {
+                    return (
+                      <div className="bg-green-100 text-green-800 p-4 rounded mb-4 font-semibold">
+                        ✅ Your subscription is active.
+                      </div>
+                    );
+                  } else if (activePlan && expiringSoon) {
+                    return (
+                      <div className="bg-yellow-100 text-yellow-800 p-4 rounded mb-4 font-semibold">
+                        ⚠️ Your subscription is about to expire soon!
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="bg-red-100 text-red-800 p-4 rounded mb-4 font-semibold">
+                        ⚠️ Your subscription has expired. Please renew your plan.
+                      </div>
+                    );
+                  }
+                })()}
 
                 <div className="overflow-hidden shadow-lg rounded-lg border border-gray-200 bg-white">
                   <div className="w-full overflow-x-auto hide-scrollbar">

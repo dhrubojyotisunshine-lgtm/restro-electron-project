@@ -288,9 +288,9 @@ const getWaiterTotalAmount = async (req, res) => {
         w.first_name || ' ' || w.last_name AS WaiterName
       FROM customer_order co
       JOIN bill b ON b.order_id = co.order_id
-      LEFT JOIN employee_history w ON co.waiter_id = w.emp_his_id
-      WHERE co.order_status = 4 
-        AND b.bill_status = 1 
+      LEFT JOIN employee_history w ON co.waiter_id = w.user_id
+      WHERE co.order_status = 4
+        AND b.bill_status = 1
         AND co.waiter_id > 0
         AND co.created_by = ?
     `;
@@ -444,14 +444,14 @@ const showDataCommsion = async (req, res) => {
     }
 
     let sql = `
-      SELECT 
+      SELECT
         SUM(c.bill_amount) AS totalamount,
-        e.pos_id,
+        a.waiter_id AS pos_id,
         e.first_name || ' ' || e.last_name AS WaiterName
       FROM customer_order a
       JOIN bill c ON a.order_id = c.order_id
-      LEFT JOIN employee_history e ON a.waiter_id = e.emp_his_id
-      WHERE a.order_status = 4 
+      LEFT JOIN employee_history e ON a.waiter_id = e.user_id
+      WHERE a.order_status = 4
         AND c.bill_status = 1
         AND a.created_by = ?
     `;
@@ -463,7 +463,7 @@ const showDataCommsion = async (req, res) => {
       params.push(from, to);
     }
 
-    sql += ` GROUP BY a.waiter_id, e.pos_id, e.first_name, e.last_name`;
+    sql += ` GROUP BY a.waiter_id, e.first_name, e.last_name`;
 
     if (searchItem) {
       const searchQuery = `%${searchItem}%`;
@@ -1057,7 +1057,7 @@ const purchaseReport = async (req, res) => {
         b.supName
       FROM purchaseitem a
       LEFT JOIN supplier b ON b.supid = a.suplierID
-      WHERE a.created_by = ?
+      WHERE a.savedby = ?
     `;
 
     const queryParams = [creatorId];

@@ -217,7 +217,7 @@ const OnGoingOrder = () => {
   const componentRef = useRef();
 
   const handlePrint = useReactToPrint({
-    content: () => componentRef.current,
+    contentRef: componentRef,
   });
 
   const showBillDetails = async (order_id) => {

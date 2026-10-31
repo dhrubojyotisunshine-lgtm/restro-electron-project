@@ -3,6 +3,27 @@ const { execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
+// Label describing how Windows reaches the printer, shown next to each detected
+// printer. Informational only — printing still routes on connection_type
+// ("network" = direct socket to the IP, "windows" = Windows spooler).
+const describeConnection = (portName, hostAddress) => {
+  const port = String(portName || "").toUpperCase();
+
+  if (hostAddress) return "Network";
+  if (port.startsWith("USB")) return "USB";
+  if (port.startsWith("BTH") || port.includes("BLUETOOTH")) return "Bluetooth";
+  if (port.startsWith("WSD")) return "Network";
+  if (port.startsWith("LPT") || port.startsWith("COM")) return "Local Port";
+  if (["NUL:", "PORTPROMPT:", "SHRFAX:", "FILE:"].includes(port)) return "Virtual";
+  if (port.startsWith("\\\\")) return "Shared";
+
+  return "Other";
+};
+
+// Reads each installed Windows printer's actual port (Get-Printer + Get-PrinterPort)
+// instead of just its name, so a Standard TCP/IP port's real host/IP can be
+// surfaced as a Network printer — everything else (USB, Bluetooth, virtual
+// drivers) is still spooler-routed in Windows, so it stays type "windows".
 const detectSystemPrinters = (req, res) => {
   try {
     const tempDir = path.join(process.cwd(), "temp");
@@ -11,54 +32,78 @@ const detectSystemPrinters = (req, res) => {
       fs.mkdirSync(tempDir);
     }
 
-    const scriptPath = path.join(tempDir, "detect_printers.vbs");
+    const scriptPath = path.join(tempDir, "detect_printers.ps1");
 
     const script = `
-Set objNetwork = CreateObject("WScript.Network")
-Set colPrinters = objNetwork.EnumPrinterConnections
-
-For i = 0 To colPrinters.Count - 1 Step 2
-  WScript.Echo colPrinters.Item(i) & "||" & colPrinters.Item(i + 1)
-Next
+$printers = @()
+Get-Printer | ForEach-Object {
+    $p = $_
+    $portInfo = Get-PrinterPort -Name $p.PortName -ErrorAction SilentlyContinue
+    $printers += [PSCustomObject]@{
+        Name        = $p.Name
+        PortName    = $p.PortName
+        HostAddress = $portInfo.PrinterHostAddress
+    }
+}
+$printers | ConvertTo-Json -Compress
 `;
 
-    fs.writeFileSync(scriptPath, script);
+    fs.writeFileSync(scriptPath, script, "utf8");
 
-    execFile("cscript.exe", ["//NoLogo", scriptPath], (error, stdout) => {
-      if (error) {
-        return res.status(500).json({
-          success: false,
-          message: "Failed to detect system printers",
-          error: error.message,
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
+      (error, stdout) => {
+        if (error) {
+          return res.status(500).json({
+            success: false,
+            message: "Failed to detect system printers",
+            error: error.message,
+          });
+        }
+
+        let parsed;
+        try {
+          parsed = JSON.parse(stdout.trim() || "[]");
+        } catch (parseErr) {
+          return res.status(500).json({
+            success: false,
+            message: "Failed to parse detected printer data",
+            error: parseErr.message,
+          });
+        }
+
+        if (!Array.isArray(parsed)) parsed = [parsed];
+
+        const data = parsed
+          .filter((p) => p && p.Name)
+          .map((p) => {
+            const host = (p.HostAddress || "").toString().trim();
+            const isNetwork = host.length > 0;
+            const type = isNetwork ? "network" : "windows";
+            const printerPath = isNetwork ? host : p.Name;
+
+            return {
+              name: p.Name,
+              connection_type: type,
+              detected_connection: describeConnection(p.PortName, host),
+              path: printerPath,
+              port: p.PortName || null,
+
+              printer_name: p.Name,
+              printer_type: type,
+              printer_path: printerPath,
+              printer_port: p.PortName || null,
+            };
+          });
+
+        return res.status(200).json({
+          success: true,
+          data,
+          message: "Printers detected successfully",
         });
-      }
-
-      const data = stdout
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [portName, printerName] = line.split("||");
-
-          return {
-            name: printerName,
-            connection_type: "windows",
-            path: printerName,
-            port: null,
-
-            printer_name: printerName,
-            printer_type: "windows",
-            printer_path: printerName,
-            printer_port: portName,
-          };
-        });
-
-      return res.status(200).json({
-        success: true,
-        data,
-        message: "Printers detected successfully",
-      });
-    });
+      },
+    );
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -563,32 +608,32 @@ const getPrinterById = (req, res) => {
 
   const sql = `
     SELECT
-      pl.id,
-      pl.printer_name,
-      pl.printer_type,
-      pl.printer_path,
-      pl.kitchen_id,
-      pl.created_by,
-      pl.created_at,
+      p.id,
+      p.name AS printer_name,
+      p.connection_type AS printer_type,
+      p.path AS printer_path,
+      p.business_id AS kitchen_id,
+      p.created_by,
+      p.created_at,
       k.kitchen_name
-    FROM printer_list pl
-    LEFT JOIN kitchens k ON pl.kitchen_id = k.id
-    WHERE pl.id = ?
+    FROM printers p
+    LEFT JOIN kitchens k ON p.business_id = k.id
+    WHERE p.id = ?
   `;
 
-  db.pool.query(sql, [printerId], (err, results) => {
+  db.get(sql, [printerId], (err, result) => {
     if (err) {
       console.error("❌ DB Error:", err);
       return res.status(500).json({ message: "Database error" });
     }
 
-    if (!results.length) {
+    if (!result) {
       return res.status(404).json({ message: "Printer not found" });
     }
 
     return res.status(200).json({
       success: true,
-      printer: results[0],
+      printer: result,
     });
   });
 };
@@ -641,11 +686,8 @@ const updatePrinter = (req, res) => {
   }
 
   // 4️⃣ Prevent same kitchen being reused
-  db.pool.query(
-    `
-    SELECT id FROM printer_list
-    WHERE kitchen_id = ? AND id != ?
-    `,
+  db.all(
+    `SELECT id FROM printers WHERE business_id = ? AND id != ?`,
     [kitchen_id, printerId],
     (err, existing) => {
       if (err) {
@@ -662,15 +704,15 @@ const updatePrinter = (req, res) => {
 
       // 5️⃣ Safe update
       const updateQuery = `
-        UPDATE printer_list
-        SET printer_name = ?, printer_type = ?, printer_path = ?, kitchen_id = ?
+        UPDATE printers
+        SET name = ?, connection_type = ?, path = ?, business_id = ?
         WHERE id = ?
       `;
 
-      db.pool.query(
+      db.run(
         updateQuery,
         [printer_name, printer_type, printer_path, kitchen_id, printerId],
-        (err, result) => {
+        function (err) {
           if (err) {
             console.error("❌ Update error:", err);
             return res.status(500).json({
@@ -679,7 +721,7 @@ const updatePrinter = (req, res) => {
             });
           }
 
-          if (result.affectedRows === 0) {
+          if (this.changes === 0) {
             return res.status(404).json({
               success: false,
               message: "Printer not found",

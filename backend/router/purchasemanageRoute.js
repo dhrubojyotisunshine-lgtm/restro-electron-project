@@ -37,4 +37,8 @@ router.get("/purchase/:purchaseid/history", verifyToken, purchaseController.getP
 // supplier ledger
 router.get("/supplierledger", verifyToken, purchaseController.getPurchaseTransactions);
 
+// import
+router.post("/suppliers/import", verifyToken, purchaseController.importSuppliers);
+router.post("/purchaseitem/import", verifyToken, purchaseController.importPurchaseItems);
+
 module.exports = router;

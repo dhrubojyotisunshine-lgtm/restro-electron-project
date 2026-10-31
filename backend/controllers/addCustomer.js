@@ -365,10 +365,68 @@ const deleteCustomer = async (req, res) => {
   }
 };
 
+const importCustomers = (req, res) => {
+  const user_id = req.id;
+  const rows = req.body.rows;
+  if (!rows || !Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ success: false, message: "No data provided" });
+
+  const checkSub = "SELECT * FROM superadmin_user_plans WHERE user_id = ?";
+  db.get(checkSub, [user_id], (err, subscription) => {
+    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (subscription) { processImport(user_id); }
+    else {
+      db.get("SELECT created_by FROM user WHERE id = ?", [user_id], (err, userData) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        if (!userData || !userData.created_by)
+          return res.status(403).json({ success: false, message: "Not authorized." });
+        db.get(checkSub, [userData.created_by], (err, creatorSub) => {
+          if (err) return res.status(500).json({ success: false, message: err.message });
+          if (!creatorSub) return res.status(403).json({ success: false, message: "Creator does not have an active subscription." });
+          processImport(userData.created_by);
+        });
+      });
+    }
+  });
+
+  function processImport(creator_id) {
+    let imported = 0, skipped = 0, index = 0;
+    const emailRegex = /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i;
+
+    function processNext() {
+      if (index >= rows.length) return res.json({ success: true, imported, skipped });
+      const row = rows[index++];
+      const customer_name = (row.Customer_Name || "").trim();
+      const customer_email = (row.Email || "").trim();
+      const customer_phone = (row.Phone || "").toString().trim();
+      const customer_address = (row.Address || "").trim();
+
+      if (!customer_name || !customer_email || !customer_phone || !customer_address) { skipped++; return processNext(); }
+      if (!emailRegex.test(customer_email)) { skipped++; return processNext(); }
+      if (!/^\d{10}$/.test(customer_phone)) { skipped++; return processNext(); }
+
+      db.get("SELECT customer_id FROM customer_info WHERE customer_email = ? AND created_by = ?", [customer_email, creator_id], (err, existing) => {
+        if (err || existing) { skipped++; return processNext(); }
+        db.run(
+          "INSERT INTO customer_info (customer_name, customer_email, customer_address, customer_phone, created_by) VALUES (?, ?, ?, ?, ?)",
+          [customer_name, customer_email, customer_address, customer_phone, creator_id],
+          function(err) {
+            if (err) { skipped++; return processNext(); }
+            imported++;
+            processNext();
+          }
+        );
+      });
+    }
+    processNext();
+  }
+};
+
 module.exports = {
   getCustomers,
   createCustomer,
   deleteCustomer,
   getCustomerById,
   updateCustomer,
+  importCustomers,
 };

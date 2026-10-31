@@ -4,7 +4,7 @@ import Nav from "../../components/Nav";
 import axios from "axios";
 
 const AllTableQr = () => {
-  const API_BASE_URL = "http://192.168.31.109:4500/api";
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   const [isOpen, setOpen] = useState(true);
   const [tableData, setTableData] = useState([]);
@@ -55,7 +55,8 @@ const AllTableQr = () => {
 
   // 🔥 QR GENERATOR
   const generateQrUrl = (tableId) => {
-    const finalUrl = `http://192.168.31.109:5173/#/qr-orders/${tableId}`;
+    const baseUrl = getBaseUrl();
+    const finalUrl = `${baseUrl}/#/qr-orders/${tableId}`;
 
     console.log("🔗 QR URL:", finalUrl);
 

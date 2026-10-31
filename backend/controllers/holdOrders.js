@@ -1,4 +1,6 @@
 const db = require("../utils/db");
+const axios = require("axios");
+const LIVE_API_URL = "https://krayon.softwarestesting.co.in/api";
 
 // const draftOrderPlace = (req, res) => {
 //     const {
@@ -367,6 +369,47 @@ const draftOrderPlace = (req, res) => {
   });
 
   function placeDraftOrder(created_by) {
+    // Invoice limit check against active subscription plan (uses live count from last sync)
+    db.get(
+      `SELECT sp.number_of_invoice FROM superadmin_user_plans sup
+       JOIN subscription_plans sp ON sup.plan_id = sp.plan_id
+       WHERE sup.user_id = ? AND sup.package_status = 'approved'
+       ORDER BY sup.user_plan_id DESC LIMIT 1`,
+      [created_by],
+      (err, planRow) => {
+        const invoiceLimit = planRow?.number_of_invoice ?? null;
+        if (invoiceLimit !== null && invoiceLimit > 0) {
+          // Local Electron orders + main website orders synced at last login = combined total
+          db.get(
+            "SELECT COUNT(*) AS invoice_count FROM customer_order WHERE created_by = ? AND order_status NOT IN (5, 6)",
+            [created_by],
+            (err2, localRow) => {
+              const localCount = localRow?.invoice_count ?? 0;
+              db.get(
+                "SELECT live_order_count FROM restaurant_settings WHERE user_id = ? ORDER BY live_order_count DESC LIMIT 1",
+                [created_by],
+                (err3, usageRow) => {
+                  const liveCount = usageRow?.live_order_count ?? 0;
+                  const currentCount = localCount + liveCount;
+                  console.log("[InvoiceLimit] local:", localCount, "| live:", liveCount, "| total:", currentCount, "| limit:", invoiceLimit);
+                  if (currentCount >= invoiceLimit) {
+                    return res.status(403).json({
+                      success: false,
+                      message: `Invoice limit reached (${currentCount}/${invoiceLimit}). Please upgrade your plan.`,
+                    });
+                  }
+                  proceedWithDraftOrder();
+                }
+              );
+            }
+          );
+        } else {
+          proceedWithDraftOrder();
+        }
+      }
+    );
+
+    function proceedWithDraftOrder() {
     const update_by = req.id || 1;
     const update_date = new Date().toISOString().split("T")[0];
 
@@ -624,6 +667,35 @@ const draftOrderPlace = (req, res) => {
                             .json({ message: "Internal server error" });
                         }
 
+                        // Fire-and-forget: push net electron-added order count to main website
+                        (async () => {
+                          try {
+                            const usageRow = await new Promise((r) =>
+                              db.get(
+                                "SELECT live_order_count FROM restaurant_settings WHERE user_id = ? ORDER BY live_order_count DESC LIMIT 1",
+                                [created_by], (e, row) => r(row)
+                              )
+                            );
+                            const liveAtLogin = usageRow?.live_order_count ?? 0;
+                            const countRow = await new Promise((r) =>
+                              db.get(
+                                "SELECT COUNT(*) AS c FROM customer_order WHERE created_by = ? AND order_status NOT IN (5, 6)",
+                                [created_by], (e, row) => r(row)
+                              )
+                            );
+                            const localCount = countRow?.c ?? 0;
+                            const electronAdded = Math.max(0, localCount - liveAtLogin);
+                            console.log("[ElectronSync] draft orders — local:", localCount, "| liveAtLogin:", liveAtLogin, "| electronAdded:", electronAdded);
+                            const resp = await axios.post(`${LIVE_API_URL}/update-electron-counts`,
+                              { user_id: created_by, electron_order_count: electronAdded },
+                              { timeout: 5000 }
+                            );
+                            console.log("[ElectronSync] draft order push response:", resp.data);
+                          } catch (e) {
+                            console.log("[ElectronSync] draft order push FAILED:", e.message);
+                          }
+                        })();
+
                         return res.status(201).json({
                           success: true,
                           message: "Order placed successfully",
@@ -642,6 +714,7 @@ const draftOrderPlace = (req, res) => {
         },
       );
     });
+    } // end proceedWithDraftOrder
   }
 };
 
@@ -655,7 +728,7 @@ const dbQuery = (query, values) => {
 };
 
 const updateOrder = async (req, res) => {
-  const order_id = req.params.id;
+  const order_id = parseInt(req.params.id, 10);
   const {
     customer_id,
     customer_type,
@@ -745,7 +818,7 @@ const updateOrder = async (req, res) => {
         VAT,
         discount,
         0,
-        detail.product_id,
+        detail.product_id || detail.ProductsID || null,
         detail.price,
         detail.quantity,
         detail.addons.map((addon) => addon.add_on_id).join(","),

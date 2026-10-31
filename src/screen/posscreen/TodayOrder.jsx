@@ -202,7 +202,7 @@ const QrOrder = () => {
   const componentRef = useRef();
 
   const handlePrint = useReactToPrint({
-    content: () => componentRef.current,
+    contentRef: componentRef,
   });
 
   const showBillDetails = async (order_id) => {
@@ -401,7 +401,7 @@ const QrOrder = () => {
         .post(
           `${API_BASE_URL}/cancelOrder/${order_id}`,
           { anyreason },
-          { headers: { "Content-Type": "application/json", Authorization: token } },
+          { headers: { "Content-Type": "application/json", Authorization: localStorage.getItem("token") } },
         )
         .then((response) => {
           console.log(response.data);

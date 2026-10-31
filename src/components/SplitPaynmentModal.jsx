@@ -12,7 +12,10 @@ const SplitPaynmentModal = ({
   if (!isOpen) return null;
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const token = localStorage.getItem("token");
-  const [selectedMethod, setSelectedMethod] = useState(1);
+  const [selectedMethod, setSelectedMethod] = useState(
+    paymentMethod?.find(m => m.payment_method?.toLowerCase().includes('cash'))?.payment_method_id
+    ?? paymentMethod?.[0]?.payment_method_id ?? null
+  );
   const [paidAmount, setPaidAmount] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState("percent"); // or "amount"

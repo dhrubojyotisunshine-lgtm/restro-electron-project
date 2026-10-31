@@ -27,6 +27,7 @@ import { MdOutlineZoomOutMap } from "react-icons/md";
 import { FaClipboardList } from "react-icons/fa6";
 import useFullScreen from "../components/useFullScreen";
 import { FaClock } from "react-icons/fa";
+import { toast } from "react-toastify";
 import DialogBoxSmall from "../components/DialogBoxSmall";
 import axios from "axios";
 const Modal = ({ isOpen, onClose, title, children }) => {
@@ -306,11 +307,15 @@ const Home = () => {
   useEffect(() => {
     if (!userId) return;
     axios
-      .get(`${API_BASE_URL}/subscriptions/${userId}`)
+      .get(`${API_BASE_URL}/subscriptions/${userId}`, { headers: { Authorization: token } })
       .then((res) => {
         const subs = res.data?.data || [];
-        if (subs.length === 0) return;
-        const latest = subs[0];
+        const approved = subs.filter(s => s.package_status === 'approved');
+        if (approved.length === 0) {
+          setIsExpired(true);
+          return;
+        }
+        const latest = approved[0];
         const today = dayjs();
         const endDate = latest.end_date ? dayjs(latest.end_date) : null;
         if (endDate) {
@@ -323,11 +328,13 @@ const Home = () => {
             setShowWarning(true);
             setIsExpired(false);
             setFormattedEndDate(endDate.format("MMMM D, YYYY"));
+          } else {
+            setIsExpired(false);
+            setShowWarning(false);
           }
         }
       })
       .catch(() => {
-        // Fallback: use login-time status from localStorage
         if (localStorage.getItem("subscriptionStatus") === "expired") {
           setIsExpired(true);
         }

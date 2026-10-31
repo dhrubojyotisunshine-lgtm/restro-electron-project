@@ -43,5 +43,6 @@ router.put(
   addfoodController.updateItemFood,
 );
 router.post("/bulk-upload-food", verifyToken, addfoodController.bulkUploadFood);
+router.post("/fooditems/import", auth, addfoodController.importFoodItems);
 
 module.exports = router;

@@ -160,37 +160,49 @@ const Log_in = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [subscriptionKey, setSubscriptionKey] = useState("");
 
-  const VITE_IMG_URL = import.meta.env.VITE_IMG_URL;
-  const [logoUrl, setLogoUrl] = useState(null);
-
   const handleLogin = async () => {
     setIsLoading(true);
 
     try {
-      // ✅ 1. Activate EXE from live server (optional — local login still works if this fails)
-      try {
-        const activateResponse = await axios.post(
-          `https://krayon.softwarestesting.co.in/api/activate-exe`,
-          {
-            email,
-            password,
-            subscription_key: subscriptionKey,
-          },
-        );
-
-        if (activateResponse.data.success) {
-          const syncData = activateResponse.data.data;
-
-          // ✅ 2. Save live activation data into local SQLite
-          try {
-            await axios.post(`${API_BASE_URL}/sync-activation-data`, syncData);
-            toast.success("EXE activated successfully");
-          } catch (syncErr) {
-            console.warn("Activation sync failed:", syncErr.message);
+      // ✅ 1. Resolve the key to use — manual entry takes priority, else use saved key from local SQLite
+      let keyToUse = subscriptionKey.trim();
+      if (!keyToUse) {
+        try {
+          const savedKeyRes = await axios.post(`${API_BASE_URL}/get-subscription-key`, { email });
+          if (savedKeyRes.data.success && savedKeyRes.data.subscription_key) {
+            keyToUse = savedKeyRes.data.subscription_key;
           }
+        } catch (e) {
+          console.warn("Could not fetch saved subscription key:", e.message);
         }
-      } catch (activateErr) {
-        console.warn("Live activation unavailable, proceeding with local login:", activateErr.message);
+      }
+
+      // ✅ 2. Sync latest plan data from live server using the resolved key
+      if (keyToUse) {
+        try {
+          const activateResponse = await axios.post(
+            `https://krayon.softwarestesting.co.in/api/activate-exe`,
+            {
+              email,
+              password,
+              subscription_key: keyToUse,
+            },
+          );
+
+          if (activateResponse.data.success) {
+            const syncData = activateResponse.data.data;
+
+            // ✅ 3. Save fresh plan data into local SQLite
+            try {
+              await axios.post(`${API_BASE_URL}/sync-activation-data`, syncData);
+              if (subscriptionKey.trim()) toast.success("EXE activated successfully");
+            } catch (syncErr) {
+              console.warn("Activation sync failed:", syncErr.message);
+            }
+          }
+        } catch (activateErr) {
+          console.warn("Live activation unavailable, proceeding with local login:", activateErr.message);
+        }
       }
 
       // ✅ 3. Login from local SQLite
@@ -258,24 +270,13 @@ const Log_in = () => {
     }
   };
 
-  useEffect(() => {
-    axios
-      .get(`${API_BASE_URL}/public/setting`)
-      .then((response) => {
-        const d = response.data.data;
-        if (d?.logo) setLogoUrl(`${VITE_IMG_URL}${d.logo}`);
-      })
-      .catch((error) => {
-        console.error("Error fetching logo:", error);
-      });
-  }, []);
 
   return (
     <div className="flex min-h-screen">
       {/* Left Side - Login Form */}
       <div className="w-2/5 flex flex-col justify-center items-center bg-white p-10 shadow-lg">
         <img
-          src={logoUrl || defaultLogo}
+          src={defaultLogo}
           alt="Smart Order POS"
           className="mb-6 w-[350px] h-[200px]"
         />
@@ -305,6 +306,7 @@ const Log_in = () => {
               placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !isLoading && handleLogin()}
               disabled={isLoading}
             />
             <button
@@ -324,6 +326,7 @@ const Log_in = () => {
             placeholder="Enter subscription key"
             value={subscriptionKey}
             onChange={(e) => setSubscriptionKey(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !isLoading && handleLogin()}
             disabled={isLoading}
           />
           <div className="flex items-center mt-4">

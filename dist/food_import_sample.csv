@@ -1,0 +1,5 @@
+Category_Name,Menu_Type,Product_Name,Description,VAT,Status,Variant_Name,Price
+Beverages,Dine In,Mango Juice,Fresh mango juice,5,1,Small,50
+Beverages,Dine In,Mango Juice,Fresh mango juice,5,1,Large,80
+Main Course,Dine In,Grilled Chicken,Juicy grilled chicken,10,1,Half,200
+Main Course,Dine In,Grilled Chicken,Juicy grilled chicken,10,1,Full,350

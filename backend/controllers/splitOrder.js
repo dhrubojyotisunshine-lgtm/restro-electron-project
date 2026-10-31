@@ -52,17 +52,17 @@ const showsplitorder = async (req, res) => {
     s.adons_qty AS addonsqty
   FROM sub_order s
 
-  LEFT JOIN item_foods f
-    ON s.order_menu_id = f.ProductsID
-
   LEFT JOIN variant v
     ON s.varient_id = v.variantid
+
+  LEFT JOIN item_foods f
+    ON COALESCE(s.order_menu_id, v.menuid) = f.ProductsID
 
   LEFT JOIN add_ons a
     ON s.adons_id IS NOT NULL
     AND ',' || s.adons_id || ',' LIKE '%,' || a.add_on_id || ',%'
 
-  WHERE s.order_id = ? AND s.status = 0
+  WHERE CAST(s.order_id AS INTEGER) = ? AND s.status = 0
 
   GROUP BY s.sub_id
 `;

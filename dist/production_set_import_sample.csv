@@ -1,0 +1,5 @@
+Food_Name,Variant_Name,Ingredient_Name,Quantity
+Burger,Regular,Wheat Flour,0.2
+Burger,Regular,Salt,5
+Burger,Large,Wheat Flour,0.3
+Burger,Large,Salt,8

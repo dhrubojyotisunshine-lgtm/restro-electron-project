@@ -82,7 +82,7 @@ const DraftOrder = ({ isOpen, onClose }) => {
       .post(
         `${API_BASE_URL}/cancelOrder/${order_id}`,
         { anyreason },
-        { headers: { "Content-Type": "application/json", Authorization: token } }
+        { headers: { "Content-Type": "application/json", Authorization: localStorage.getItem("token") } }
       )
       .then((response) => {
         console.log(response.data);
